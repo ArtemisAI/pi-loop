@@ -81,11 +81,11 @@ describe("LoopScheduler", () => {
     });
 
     it("fires when past next fire time", () => {
-      // Create a task anchored 6 minutes ago with 5-minute interval
-      // Next fire should have been ~1 minute ago
+      // Use 1-minute interval, anchored 30 minutes ago — well past due
+      // even with 50% jitter (max 30s delay on 1-min interval)
       const task = makeTask({
-        cron: "*/5 * * * *",
-        createdAt: Date.now() - 6 * 60_000,
+        cron: "*/1 * * * *",
+        createdAt: Date.now() - 30 * 60_000,
       });
       addTask(task);
 
