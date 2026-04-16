@@ -1,4 +1,4 @@
-# @artemisai/pi-loop
+# @pi-agents/loop
 
 Recurring prompt scheduling and cron job management for [pi-coding-agent](https://github.com/badlogic/pi-mono).
 
@@ -14,14 +14,14 @@ Recurring prompt scheduling and cron job management for [pi-coding-agent](https:
 ## Install
 
 ```bash
-npm install @artemisai/pi-loop
+npm install @pi-agents/loop
 ```
 
 Add to your pi-agent settings (`~/.pi/agent/settings.json`):
 
 ```json
 {
-  "extensions": ["npm:@artemisai/pi-loop"]
+  "extensions": ["npm:@pi-agents/loop"]
 }
 ```
 

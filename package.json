@@ -1,5 +1,5 @@
 {
-  "name": "@artemisai/pi-loop",
+  "name": "@pi-agents/loop",
   "version": "0.1.0",
   "description": "Recurring prompt execution and cron scheduling for pi-agent — /loop, cron_create, cron_delete, cron_list",
   "author": "ArtemisAI",
@@ -43,7 +43,7 @@
     "typescript": "^5.7.0"
   },
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   },
   "engines": {
     "node": ">=20"
