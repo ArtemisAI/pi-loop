@@ -17,6 +17,12 @@ import {
 } from "./store.js";
 import type { LoopConfig, LoopTask } from "./types.js";
 
+const DEBUG = !!process.env.PI_LOOP_DEBUG;
+function debug(...args: any[]): void {
+  if (!DEBUG) return;
+  console.debug("[pi-loop:scheduler]", ...args);
+}
+
 export class LoopScheduler {
   private interval: ReturnType<typeof setInterval> | null = null;
   private isAgentBusy = false;
@@ -97,6 +103,8 @@ export class LoopScheduler {
   }
 
   private fire(task: LoopTask): void {
+    debug("fire:", task.id, task.prompt.slice(0, 40));
+
     // Notify UI
     if (this.ctx?.hasUI) {
       const label = task.label || task.prompt.slice(0, 40);
@@ -112,6 +120,7 @@ export class LoopScheduler {
     if (task.recurring) {
       if (this.isAgedOut(task)) {
         // Final fire — remove the task
+        debug("fire:", task.id, "aged out, removing after final fire");
         removeTask(task.id);
         if (this.ctx?.hasUI) {
           this.ctx.ui.notify(

@@ -8,6 +8,9 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { watchFile, unwatchFile } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { intervalToCron, cronToHuman, nextCronRunMs } from "./cron.js";
 import { parseLoopArgs } from "./parse-args.js";
 import { LoopScheduler } from "./scheduler.js";
@@ -21,15 +24,35 @@ import {
   writeDurableTasks,
   acquireLock,
   releaseLock,
+  clearAllTasks,
 } from "./store.js";
 import { registerCronTools } from "./tools/cron-tools.js";
-import { DEFAULT_CONFIG, type LoopTask } from "./types.js";
+import { DEFAULT_CONFIG, type LoopConfig, type LoopTask } from "./types.js";
+
+const DEBUG = !!process.env.PI_LOOP_DEBUG;
+function debug(...args: any[]): void {
+  if (!DEBUG) return;
+  console.debug("[pi-loop]", ...args);
+}
+
+async function loadProjectConfig(cwd: string): Promise<LoopConfig> {
+  const defaults = { ...DEFAULT_CONFIG };
+  try {
+    const raw = await readFile(join(cwd, ".pi-loop.config.json"), "utf-8");
+    const overrides = JSON.parse(raw);
+    debug("loadProjectConfig: loaded overrides from .pi-loop.config.json");
+    return { ...defaults, ...overrides };
+  } catch {
+    return defaults;
+  }
+}
 
 export default function piLoop(pi: ExtensionAPI): void {
-  const config = { ...DEFAULT_CONFIG };
+  let config = { ...DEFAULT_CONFIG };
   let cwd = process.cwd();
   let scheduler: LoopScheduler | null = null;
   let hasLock = false;
+  let sessionSnapshot: LoopTask[] = [];
 
   // --- Commands ---
 
@@ -189,6 +212,10 @@ export default function piLoop(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
 
+    // Load project-level config
+    config = await loadProjectConfig(cwd);
+    debug("session_start: config loaded, cwd =", cwd);
+
     // Initialize scheduler
     scheduler = new LoopScheduler(pi, config, cwd);
     scheduler.setContext(ctx);
@@ -229,6 +256,28 @@ export default function piLoop(pi: ExtensionAPI): void {
       }
     }
 
+    // Watch durable file for external changes (MD-008)
+    const durablePath = join(cwd, config.durableFilePath);
+    watchFile(durablePath, { interval: 5000 }, () => {
+      if (!hasLock) return;
+      debug("fileWatcher: durable file changed, reloading");
+      loadDurableTasks(cwd, config).then((result) => {
+        const fileIds = new Set(result.tasks.map((t) => t.id));
+        for (const existing of getAllTasks()) {
+          if (existing.durable && !fileIds.has(existing.id)) {
+            removeTask(existing.id);
+          }
+        }
+        const currentIds = new Set(getAllTasks().map((t) => t.id));
+        for (const task of result.tasks) {
+          if (!currentIds.has(task.id)) {
+            addTask(task);
+          }
+        }
+        scheduler?.refreshStatus();
+      }).catch(() => {});
+    });
+
     // Start the scheduler tick loop
     scheduler.start();
     scheduler.refreshStatus();
@@ -243,18 +292,45 @@ export default function piLoop(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     scheduler?.stop();
+    const dp = join(cwd, config.durableFilePath);
+    unwatchFile(dp);
     if (hasLock) {
       await releaseLock(cwd, config);
     }
   });
 
+  // --- Session compaction: preserve session-only tasks (HI-002) ---
+
+  pi.on("session_before_compact", () => {
+    sessionSnapshot = getAllTasks().filter((t) => !t.durable);
+    debug("session_before_compact: snapshot", sessionSnapshot.length, "session-only tasks");
+  });
+
+  pi.on("session_compact", () => {
+    const currentIds = new Set(getAllTasks().map((t) => t.id));
+    let restored = 0;
+    for (const task of sessionSnapshot) {
+      if (!currentIds.has(task.id)) {
+        addTask(task);
+        restored++;
+      }
+    }
+    if (restored > 0) {
+      debug("session_compact: restored", restored, "session-only tasks");
+      scheduler?.refreshStatus();
+    }
+    sessionSnapshot = [];
+  });
+
   // --- Idle gate ---
 
   pi.on("agent_start", () => {
+    debug("agent_start: scheduler set busy");
     scheduler?.setBusy();
   });
 
   pi.on("agent_end", () => {
+    debug("agent_end: scheduler set idle");
     scheduler?.setIdle();
   });
 }
