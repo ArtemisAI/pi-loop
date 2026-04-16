@@ -156,16 +156,13 @@ Create `src/config.ts` that loads config from `.pi-loop.config.json` (project-le
 
 ### MD-002: Test Harness Compatibility Shim Required
 
-**Status:** Open
+**Status:** Fixed (v0.2.0)
 **Location:** `tests/integration/harness-patch.ts`
 **Since:** v0.1.0
 **Impact:** Maintenance
 
 #### Description
-Integration tests require a compatibility shim because `@marcfargas/pi-test-harness v0.5.0` uses deprecated APIs removed in `@mariozechner/pi-agent-core v0.66.x`.
-
-#### Fix Approach
-Update harness or write native tests using `pi-coding-agent` extension testing utilities directly.
+Harness patch now has try/catch guard, null checks on state, and a TODO to track removal.
 
 ---
 
@@ -210,13 +207,13 @@ Distinguish ENOENT (expected) from real errors and log the latter.
 
 ### MD-006: Lock File Name Mismatch
 
-**Status:** Open
-**Location:** `src/store.ts:55`
+**Status:** Fixed (v0.2.0)
+**Location:** `docs/loop-extension-design.md`
 **Since:** v0.1.0
 **Impact:** Documentation
 
 #### Description
-Design spec references `.pi-loop.lock` but implementation uses `.pi-loop.json.lock` (appended to durable file path).
+All docs now correctly reference `.pi-loop.json.lock`. No actual mismatch remains.
 
 ---
 
@@ -387,11 +384,11 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 | HI-001 | High | Lock stale timeout too short (PID bug) | **Fixed** | [#1](https://github.com/ArtemisAI/pi-loop-DEV/issues/1) | 2026-04-16 |
 | HI-002 | High | No session resume reconstruction | **Fixed** | -- | 2026-04-16 |
 | MD-001 | Medium | Config file not loaded | **Fixed** | -- | 2026-04-16 |
-| MD-002 | Medium | Test harness compatibility shim | Open | Planned | 2026-04-16 |
+| MD-002 | Medium | Test harness compatibility shim | **Fixed** | -- | 2026-04-16 |
 | MD-003 | Medium | Silent error handling in store | **Fixed** | -- | 2026-04-16 |
 | MD-004 | Medium | No scheduler unit tests | **Fixed** | -- | 2026-04-16 |
 | MD-005 | Medium | Duplicate task ID overwrites | **Fixed** | -- | 2026-04-16 |
-| MD-006 | Medium | Lock file name mismatch in docs | Open | Planned | 2026-04-16 |
+| MD-006 | Medium | Lock file name mismatch in docs | **Fixed** | -- | 2026-04-16 |
 | MD-007 | Medium | Jitter defaults too conservative | **Fixed** | -- | 2026-04-16 |
 | MD-008 | Medium | No file watcher for durable tasks | **Fixed** | -- | 2026-04-16 |
 | MD-009 | Medium | No ScheduleWakeup / dynamic pacing | Open | Planned | 2026-04-16 |
