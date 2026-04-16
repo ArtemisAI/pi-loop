@@ -81,6 +81,11 @@ export class LoopScheduler {
   }
 
   private shouldFire(task: LoopTask, now: number): boolean {
+    // Handle ScheduleWakeup tasks — stored with _wakeup_ prefixed cron
+    if (task.cron.startsWith("_wakeup_")) {
+      return task.nextFireTime != null && now >= task.nextFireTime;
+    }
+
     // Compute the base next fire time
     const anchor = task.lastFiredAt ?? task.createdAt;
     const baseNext = nextCronRunMs(task.cron, anchor);

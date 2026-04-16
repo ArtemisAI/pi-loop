@@ -261,8 +261,8 @@ Use `fs.watch()` or `chokidar` on `.pi-loop.json` to detect external changes.
 
 ### MD-009: No ScheduleWakeup / Dynamic Pacing
 
-**Status:** Open
-**Location:** Global (new feature)
+**Status:** Fixed (v0.2.0)
+**Location:** `src/schedule-wakeup.ts`, `src/index.ts` -> /loop dynamic mode
 **Since:** v0.1.0
 **Impact:** Feature Gap
 
@@ -391,7 +391,7 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 | MD-006 | Medium | Lock file name mismatch in docs | **Fixed** | -- | 2026-04-16 |
 | MD-007 | Medium | Jitter defaults too conservative | **Fixed** | -- | 2026-04-16 |
 | MD-008 | Medium | No file watcher for durable tasks | **Fixed** | -- | 2026-04-16 |
-| MD-009 | Medium | No ScheduleWakeup / dynamic pacing | Open | Planned | 2026-04-16 |
+| MD-009 | Medium | No ScheduleWakeup / dynamic pacing | **Fixed** | -- | 2026-04-16 |
 | MD-010 | Medium | No Monitor tool integration | Open | Planned | 2026-04-16 |
 | LW-001 | Low | Jitter doc comment mismatch | **Fixed** | -- | 2026-04-16 |
 | LW-002 | Low | No debug logging | **Fixed** | -- | 2026-04-16 |

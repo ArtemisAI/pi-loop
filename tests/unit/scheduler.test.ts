@@ -130,9 +130,9 @@ describe("LoopScheduler", () => {
 
     it("does not fire one-shot before due time", () => {
       const task = makeTask({
-        cron: "*/5 * * * *",
+        cron: "0 * * * *", // Every hour at :00 — reliably in the future
         recurring: false,
-        createdAt: Date.now() - 60_000, // 1 min ago
+        createdAt: Date.now(),
       });
       addTask(task);
 

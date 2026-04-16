@@ -27,6 +27,7 @@ import {
   clearAllTasks,
 } from "./store.js";
 import { registerCronTools } from "./tools/cron-tools.js";
+import { registerWakeupTool } from "./schedule-wakeup.js";
 import { DEFAULT_CONFIG, type LoopConfig, type LoopTask } from "./types.js";
 
 const DEBUG = !!process.env.PI_LOOP_DEBUG;
@@ -77,6 +78,31 @@ export default function piLoop(pi: ExtensionAPI): void {
             "warning",
           );
         }
+        return;
+      }
+
+      // Check if this is the default 10m interval from Rule 3 (no explicit interval)
+      const tokens = args.trim().split(/\s+/);
+      const hasExplicitInterval = /^\d+[smhd]$/.test(tokens[0]) ||
+        /\s+every\s+/i.test(args);
+
+      if (!hasExplicitInterval) {
+        // Dynamic pacing mode: execute now, let model self-pace via schedule_wakeup
+        debug("/loop: no explicit interval, entering dynamic pacing mode");
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            `Loop started (dynamic pacing): ${parsed.prompt}\n` +
+            `The agent will self-pace using schedule_wakeup. Cancel with: /loop-kill`,
+            "info",
+          );
+        }
+        pi.sendUserMessage(
+          parsed.prompt +
+          "\n\n[pi-loop: This is a dynamic /loop. After completing this iteration, " +
+          "call schedule_wakeup to arm the next wake-up. Choose your delay based on " +
+          "the task: 60-270s for active work, 1200-1800s for idle monitoring. " +
+          "Omit the call to end the loop.]",
+        );
         return;
       }
 
@@ -222,6 +248,7 @@ export default function piLoop(pi: ExtensionAPI): void {
 
     // Register LLM tools (needs scheduler reference)
     registerCronTools(pi, scheduler, config, () => cwd);
+    registerWakeupTool(pi, config);
 
     // Load durable tasks
     hasLock = await acquireLock(cwd, config);
