@@ -52,6 +52,9 @@ export function registerCronTools(
         default: false,
         description: "true = persist to .pi-loop.json across sessions; false = session-only",
       }),
+      label: Type.Optional(Type.String({
+        description: "Optional human-readable label for this task",
+      })),
     }),
     promptSnippet:
       "cron_create — schedule a prompt to run on a cron schedule (recurring or one-shot)",
@@ -79,6 +82,7 @@ export function registerCronTools(
         nextFireTime: params.recurring ? undefined : nextCronRunMs(params.cron, Date.now()) ?? undefined,
         recurring: params.recurring,
         durable: params.durable,
+        label: params.label,
       };
 
       addTask(task);
@@ -98,6 +102,7 @@ export function registerCronTools(
       return result([
         `Scheduled task created.`,
         `  ID: ${task.id}`,
+        ...(task.label ? [`  Label: ${task.label}`] : []),
         `  Schedule: ${human} (${params.cron})`,
         `  Next fire: ${nextDate}`,
         `  Prompt: ${task.prompt}`,

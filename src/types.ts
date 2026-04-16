@@ -33,8 +33,8 @@ export interface LoopConfig {
 export const DEFAULT_CONFIG: LoopConfig = {
   maxJobs: 50,
   recurringMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
-  recurringJitterFrac: 0.1,
-  recurringJitterCapMs: 15 * 60 * 1000,
+  recurringJitterFrac: 0.5,
+  recurringJitterCapMs: 30 * 60 * 1000,
   oneShotJitterMaxMs: 90 * 1000,
   oneShotJitterFloorMs: 0,
   oneShotJitterMinuteMod: 30,

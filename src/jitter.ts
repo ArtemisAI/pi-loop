@@ -34,10 +34,10 @@ export function recurringJitterMs(
 }
 
 /**
- * Compute jitter for a one-shot task (backward lead in ms).
+ * Compute jitter for a one-shot task.
  *
  * Only applies if fire minute is on a boundary (e.g. :00 or :30).
- * Returns a negative offset (subtract from fire time).
+ * Returns a POSITIVE value representing the lead time to subtract from fireTime.
  * Never fires before task creation time.
  */
 export function oneShotJitterMs(
