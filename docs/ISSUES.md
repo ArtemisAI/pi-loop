@@ -3,7 +3,7 @@
 > Internal development document — tracks bugs, design gaps, and future work.
 > For public-facing summary, see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 >
-> **Last updated**: 2026-04-16 — revised after deep-dive comparison against Claude Code, pi-mono, and claw-code.
+> **Last updated**: 2026-04-16 — implementation sprint: fixed HI-001, CR-001, MD-003, MD-004, MD-005, MD-007, LW-001, LW-003.
 
 ---
 
@@ -22,7 +22,7 @@
 
 ### CR-001: No Missed One-Shot Recovery
 
-**Status:** Open
+**Status:** Fixed (v0.1.2-dev)
 **Location:** `src/store.ts` -> `loadDurableTasks()`, `src/index.ts` -> session_start handler
 **Since:** v0.1.0
 **Impact:** Data Loss
@@ -59,8 +59,8 @@ Claude Code's `findMissedTasks()` filters for non-recurring tasks whose `nextCro
 
 ### HI-001: Stale Lock Timeout Too Short (PID Liveness Bug)
 
-**Status:** Open (GitHub Issue #1 on both repos)
-**Location:** `src/store.ts:87-121`
+**Status:** Fixed (v0.1.2-dev)
+**Location:** `src/store.ts:158-165` (isPidAlive), `src/store.ts:167-200` (acquireLock)
 **Since:** v0.1.0
 **Impact:** Multi-Instance Safety — lock can be stolen while owner is still alive
 
@@ -171,7 +171,7 @@ Update harness or write native tests using `pi-coding-agent` extension testing u
 
 ### MD-003: Silent Error Handling in Store Operations
 
-**Status:** Open
+**Status:** Fixed (v0.1.2-dev)
 **Location:** `src/store.ts`
 **Since:** v0.1.0
 **Impact:** Debugging
@@ -186,8 +186,8 @@ Distinguish ENOENT (expected) from real errors and log the latter.
 
 ### MD-004: No Scheduler Unit Tests
 
-**Status:** Open
-**Location:** `src/scheduler.ts`
+**Status:** Fixed (v0.1.2-dev)
+**Location:** `tests/unit/scheduler.test.ts`
 **Since:** v0.1.0
 **Impact:** Quality Assurance
 
@@ -198,8 +198,8 @@ Distinguish ENOENT (expected) from real errors and log the latter.
 
 ### MD-005: Duplicate Task ID Silently Overwrites
 
-**Status:** Open
-**Location:** `src/store.ts:19-21`
+**Status:** Fixed (v0.1.2-dev)
+**Location:** `src/store.ts:33-42`
 **Since:** v0.1.0
 **Impact:** Data Integrity
 
@@ -222,8 +222,8 @@ Design spec references `.pi-loop.lock` but implementation uses `.pi-loop.json.lo
 
 ### MD-007: Jitter Defaults Too Conservative
 
-**Status:** Open
-**Location:** `src/types.ts:33-42`
+**Status:** Fixed (v0.1.2-dev)
+**Location:** `src/types.ts:36-37`
 **Since:** v0.1.0
 **Impact:** Thundering-Herd Protection
 
@@ -305,8 +305,8 @@ Claude Code's `/loop` can pair with a `Monitor` tool as the wake signal instead 
 
 ### LW-001: Jitter Function Doc Comment Mismatch
 
-**Status:** Open
-**Location:** `src/jitter.ts:45`
+**Status:** Fixed (v0.1.2-dev)
+**Location:** `src/jitter.ts:35-40`
 **Since:** v0.1.0
 **Impact:** Documentation
 
@@ -336,7 +336,7 @@ if (process.env.PI_LOOP_DEBUG) {
 
 ### LW-003: cron_create Missing Label Parameter
 
-**Status:** Open
+**Status:** Fixed (v0.1.2-dev)
 **Location:** `src/tools/cron-tools.ts`
 **Since:** v0.1.0
 **Impact:** UX
@@ -381,24 +381,24 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 
 ## Issue Tracking
 
-| ID | Severity | Summary | GitHub Issue | Last Updated |
-|----|----------|---------|--------------|--------------|
-| CR-001 | Critical | No missed one-shot recovery | Planned | 2026-04-16 |
-| HI-001 | High | Lock stale timeout too short (PID bug) | [#1](https://github.com/ArtemisAI/pi-loop-DEV/issues/1) | 2026-04-16 |
-| HI-002 | High | No session resume reconstruction | Planned | 2026-04-16 |
-| MD-001 | Medium | Config file not loaded | Planned | 2026-04-16 |
-| MD-002 | Medium | Test harness compatibility shim | Planned | 2026-04-16 |
-| MD-003 | Medium | Silent error handling in store | Planned | 2026-04-16 |
-| MD-004 | Medium | No scheduler unit tests | Planned | 2026-04-16 |
-| MD-005 | Medium | Duplicate task ID overwrites | Planned | 2026-04-16 |
-| MD-006 | Medium | Lock file name mismatch in docs | Planned | 2026-04-16 |
-| MD-007 | Medium | Jitter defaults too conservative | Planned | 2026-04-16 |
-| MD-008 | Medium | No file watcher for durable tasks | Planned | 2026-04-16 |
-| MD-009 | Medium | No ScheduleWakeup / dynamic pacing | Planned | 2026-04-16 |
-| MD-010 | Medium | No Monitor tool integration | Planned | 2026-04-16 |
-| LW-001 | Low | Jitter doc comment mismatch | Planned | 2026-04-16 |
-| LW-002 | Low | No debug logging | Planned | 2026-04-16 |
-| LW-003 | Low | cron_create missing label param | Planned | 2026-04-16 |
+| ID | Severity | Summary | Status | GitHub Issue | Last Updated |
+|----|----------|---------|--------|--------------|--------------|
+| CR-001 | Critical | No missed one-shot recovery | **Fixed** | -- | 2026-04-16 |
+| HI-001 | High | Lock stale timeout too short (PID bug) | **Fixed** | [#1](https://github.com/ArtemisAI/pi-loop-DEV/issues/1) | 2026-04-16 |
+| HI-002 | High | No session resume reconstruction | Open | Planned | 2026-04-16 |
+| MD-001 | Medium | Config file not loaded | Open | Planned | 2026-04-16 |
+| MD-002 | Medium | Test harness compatibility shim | Open | Planned | 2026-04-16 |
+| MD-003 | Medium | Silent error handling in store | **Fixed** | -- | 2026-04-16 |
+| MD-004 | Medium | No scheduler unit tests | **Fixed** | -- | 2026-04-16 |
+| MD-005 | Medium | Duplicate task ID overwrites | **Fixed** | -- | 2026-04-16 |
+| MD-006 | Medium | Lock file name mismatch in docs | Open | Planned | 2026-04-16 |
+| MD-007 | Medium | Jitter defaults too conservative | **Fixed** | -- | 2026-04-16 |
+| MD-008 | Medium | No file watcher for durable tasks | Open | Planned | 2026-04-16 |
+| MD-009 | Medium | No ScheduleWakeup / dynamic pacing | Open | Planned | 2026-04-16 |
+| MD-010 | Medium | No Monitor tool integration | Open | Planned | 2026-04-16 |
+| LW-001 | Low | Jitter doc comment mismatch | **Fixed** | -- | 2026-04-16 |
+| LW-002 | Low | No debug logging | Open | Planned | 2026-04-16 |
+| LW-003 | Low | cron_create missing label param | **Fixed** | -- | 2026-04-16 |
 
 ---
 
@@ -406,5 +406,6 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 
 | Date | Change |
 |------|--------|
+| 2026-04-16 | Implementation sprint: fixed CR-001, HI-001, MD-003, MD-004, MD-005, MD-007, LW-001, LW-003. 86 tests passing. |
 | 2026-04-16 | Major revision: regraded issues by severity, added HI-001/HI-002, added MD-007 through MD-010, LW-003; added feature parity table; added Claude Code and claw-code references |
 | 2026-04-16 | Initial issue audit completed |
