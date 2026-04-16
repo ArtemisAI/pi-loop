@@ -155,7 +155,14 @@ interface LockContent {
   acquiredAt: number;
 }
 
-const STALE_LOCK_MS = 30_000;
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function acquireLock(
   cwd: string,
@@ -175,12 +182,12 @@ export async function acquireLock(
   } catch (err: any) {
     if (err.code !== "EEXIST") return false;
 
-    // Check for stale lock
+    // Check if lock owner is still alive via PID
     try {
       const raw = await readFile(path, "utf-8");
       const lock: LockContent = JSON.parse(raw);
-      if (Date.now() - lock.acquiredAt > STALE_LOCK_MS) {
-        // Stale lock — remove and retry
+      if (!isPidAlive(lock.pid)) {
+        // Owner PID is dead — stale lock from crashed session
         await unlink(path);
         return acquireLock(cwd, config);
       }
