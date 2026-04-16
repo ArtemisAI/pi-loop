@@ -1,6 +1,6 @@
 {
   "name": "@pi-agents/loop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Recurring prompt execution and cron scheduling for pi-agent — /loop, cron_create, cron_delete, cron_list",
   "author": "ArtemisAI",
   "license": "MIT",

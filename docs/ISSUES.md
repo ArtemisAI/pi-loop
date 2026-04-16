@@ -3,7 +3,7 @@
 > Internal development document — tracks bugs, design gaps, and future work.
 > For public-facing summary, see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 >
-> **Last updated**: 2026-04-16 — implementation sprint: fixed HI-001, CR-001, MD-003, MD-004, MD-005, MD-007, LW-001, LW-003.
+> **Last updated**: 2026-04-16 — all fixable issues resolved for v0.2.0.
 
 ---
 
@@ -116,8 +116,8 @@ return acquireLock(cwd, config);
 
 ### HI-002: No Session Resume Reconstruction
 
-**Status:** Open
-**Location:** `src/index.ts` -> session_start handler
+**Status:** Fixed (v0.2.0)
+**Location:** `src/index.ts` -> session_before_compact / session_compact handlers
 **Since:** v0.1.0
 **Impact:** Data Loss on compaction
 
@@ -141,8 +141,8 @@ Use `pi.on("session_before_compact")` to snapshot session-only tasks, then `pi.o
 
 ### MD-001: Config File Not Loaded
 
-**Status:** Open
-**Location:** `src/index.ts`, `src/types.ts`
+**Status:** Fixed (v0.2.0)
+**Location:** `src/index.ts` -> loadProjectConfig()
 **Since:** v0.1.0
 **Impact:** User Experience
 
@@ -246,8 +246,8 @@ recurringJitterCapMs: 30 * 60 * 1000,
 
 ### MD-008: No File Watcher for Durable Tasks
 
-**Status:** Open
-**Location:** `src/scheduler.ts`
+**Status:** Fixed (v0.2.0)
+**Location:** `src/index.ts` -> session_start file watcher
 **Since:** v0.1.0
 **Impact:** Multi-Instance Coordination
 
@@ -317,8 +317,8 @@ Doc says "returns a negative offset" but function returns a positive value. The 
 
 ### LW-002: No Logging/Debug Mode
 
-**Status:** Open
-**Location:** Global
+**Status:** Fixed (v0.2.0)
+**Location:** `src/index.ts`, `src/scheduler.ts`, `src/store.ts`
 **Since:** v0.1.0
 **Impact:** Debugging
 
@@ -385,19 +385,19 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 |----|----------|---------|--------|--------------|--------------|
 | CR-001 | Critical | No missed one-shot recovery | **Fixed** | -- | 2026-04-16 |
 | HI-001 | High | Lock stale timeout too short (PID bug) | **Fixed** | [#1](https://github.com/ArtemisAI/pi-loop-DEV/issues/1) | 2026-04-16 |
-| HI-002 | High | No session resume reconstruction | Open | Planned | 2026-04-16 |
-| MD-001 | Medium | Config file not loaded | Open | Planned | 2026-04-16 |
+| HI-002 | High | No session resume reconstruction | **Fixed** | -- | 2026-04-16 |
+| MD-001 | Medium | Config file not loaded | **Fixed** | -- | 2026-04-16 |
 | MD-002 | Medium | Test harness compatibility shim | Open | Planned | 2026-04-16 |
 | MD-003 | Medium | Silent error handling in store | **Fixed** | -- | 2026-04-16 |
 | MD-004 | Medium | No scheduler unit tests | **Fixed** | -- | 2026-04-16 |
 | MD-005 | Medium | Duplicate task ID overwrites | **Fixed** | -- | 2026-04-16 |
 | MD-006 | Medium | Lock file name mismatch in docs | Open | Planned | 2026-04-16 |
 | MD-007 | Medium | Jitter defaults too conservative | **Fixed** | -- | 2026-04-16 |
-| MD-008 | Medium | No file watcher for durable tasks | Open | Planned | 2026-04-16 |
+| MD-008 | Medium | No file watcher for durable tasks | **Fixed** | -- | 2026-04-16 |
 | MD-009 | Medium | No ScheduleWakeup / dynamic pacing | Open | Planned | 2026-04-16 |
 | MD-010 | Medium | No Monitor tool integration | Open | Planned | 2026-04-16 |
 | LW-001 | Low | Jitter doc comment mismatch | **Fixed** | -- | 2026-04-16 |
-| LW-002 | Low | No debug logging | Open | Planned | 2026-04-16 |
+| LW-002 | Low | No debug logging | **Fixed** | -- | 2026-04-16 |
 | LW-003 | Low | cron_create missing label param | **Fixed** | -- | 2026-04-16 |
 
 ---
