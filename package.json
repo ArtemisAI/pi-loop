@@ -35,12 +35,14 @@
     "@sinclair/typebox": "*"
   },
   "devDependencies": {
+    "@marcfargas/pi-test-harness": "^0.5.0",
     "@mariozechner/pi-agent-core": "*",
     "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@sinclair/typebox": "^0.34.0",
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.4"
   },
   "publishConfig": {
     "access": "public"
@@ -73,6 +75,11 @@
     "build": "tsc",
     "lint": "tsc --noEmit",
     "dev": "pi -e ./src/index.ts -s ./skills",
-    "prepublishOnly": "npm run build"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit/",
+    "test:integration": "vitest run tests/integration/",
+    "test:ci": "vitest run tests/unit/ tests/integration/sandbox-install.test.ts",
+    "prepublishOnly": "npm run build && npm run test:unit"
   }
 }
