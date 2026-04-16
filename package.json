@@ -1,0 +1,78 @@
+{
+  "name": "@artemisai/pi-loop",
+  "version": "0.1.0",
+  "description": "Recurring prompt execution and cron scheduling for pi-agent — /loop, cron_create, cron_delete, cron_list",
+  "author": "ArtemisAI",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "skills",
+    "config/default.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "^0.34.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "pi-agent",
+    "loop",
+    "cron",
+    "scheduler",
+    "recurring",
+    "automation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArtemisAI/pi-loop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ArtemisAI/pi-loop/issues"
+  },
+  "homepage": "https://github.com/ArtemisAI/pi-loop#readme",
+  "scripts": {
+    "prebuild": "rm -rf dist",
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "dev": "pi -e ./src/index.ts -s ./skills",
+    "prepublishOnly": "npm run build"
+  }
+}

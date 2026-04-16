@@ -1,0 +1,11 @@
+{
+  "maxJobs": 50,
+  "recurringMaxAgeDays": 7,
+  "recurringJitterFrac": 0.1,
+  "recurringJitterCapMinutes": 15,
+  "oneShotJitterMaxSeconds": 90,
+  "oneShotJitterFloorSeconds": 0,
+  "oneShotJitterMinuteMod": 30,
+  "checkIntervalMs": 1000,
+  "durableFilePath": ".pi-loop.json"
+}
