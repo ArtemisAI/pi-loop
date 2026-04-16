@@ -1,22 +1,17 @@
 # Pi-Coding-Agent Extension API
 
-> Analysis of the pi-coding-agent extension system from [badlogic/pi-mono](https://github.com/badlogic/pi-mono). This documents the API surface that a `/loop`-like extension would use.
+> Analysis of the pi-coding-agent extension system from [badlogic/pi-mono](https://github.com/badlogic/pi-mono).
+>
+> **Last updated**: 2026-04-16 — revised after deep-dive against pi-mono source (`packages/coding-agent/src/core/extensions/types.ts`).
 
 **Source**: `packages/coding-agent/src/core/extensions/`
+**Package**: `@mariozechner/pi-coding-agent`
 
 ---
 
 ## Extension System Overview
 
-Extensions are TypeScript modules that can:
-- Subscribe to agent lifecycle events
-- Register LLM-callable tools
-- Register slash commands, keyboard shortcuts, and CLI flags
-- Interact with the user via UI primitives
-- Send messages to the agent programmatically
-- Register custom model providers
-
-An extension is a module that exports a **default factory function**:
+Extensions are TypeScript modules that export a **default factory function**:
 
 ```typescript
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -26,57 +21,48 @@ export default function myExtension(pi: ExtensionAPI) {
 }
 ```
 
+Extensions can:
+- Subscribe to agent lifecycle events (20+ events)
+- Register LLM-callable tools (TypeBox schemas + execute handlers)
+- Register slash commands, keyboard shortcuts, and CLI flags
+- Interact with the user via UI primitives
+- Send messages to the agent programmatically
+- Register custom model providers
+- Communicate with other extensions via EventBus
+
 ---
 
 ## Discovery & Loading
 
-**File**: `loader.ts`
+Extensions are discovered from:
 
-Extensions are discovered from three locations (in order):
-
-1. **Global**: `<agentDir>/extensions/` (e.g., `~/.pi/agent/extensions/`)
-2. **Project-local**: `<cwd>/.pi/extensions/`
-3. **Explicitly configured paths**
-
-Discovery rules per directory:
-- `.ts` or `.js` files directly in the directory → load
-- Subdirectories with `index.ts`/`index.js` → load the index
-- Subdirectories with `package.json` containing a `"pi"` field → load declared extensions
+1. **Global**: `~/.pi/agent/extensions/` (single files or subdirectory indices)
+2. **Project-local**: `.pi/extensions/`
+3. **npm packages**: `"npm:@scope/package@version"` in settings.json `packages` array
+4. **Git repos**: `"git:github.com/user/repo"`
 
 ### package.json Manifest
 
 ```json
 {
+  "name": "my-extension",
+  "keywords": ["pi-package"],
   "pi": {
-    "extensions": ["src/loop.ts"],
-    "themes": [],
-    "skills": [],
-    "prompts": []
+    "extensions": ["./src/index.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts"],
+    "themes": ["./themes"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
   }
 }
 ```
 
-Extensions are loaded via `@mariozechner/jiti` (fork with virtualModules support for compiled Bun binaries), which allows TypeScript imports without pre-compilation.
-
-### Virtual Modules
-
-When running as a compiled Bun binary, these packages are available to extensions via virtual module injection:
-
-| Package | Purpose |
-|---------|---------|
-| `@sinclair/typebox` | Schema definitions for tool parameters |
-| `@mariozechner/pi-agent-core` | Agent runtime (tool calling, state) |
-| `@mariozechner/pi-tui` | Terminal UI components |
-| `@mariozechner/pi-ai` | Multi-provider LLM API |
-| `@mariozechner/pi-coding-agent` | Full coding agent API |
-
 ---
 
 ## ExtensionAPI Surface
-
-**File**: `types.ts` (lines 859-1036+)
-
-The `ExtensionAPI` interface provides these capabilities:
 
 ### Event Subscription
 
@@ -84,37 +70,43 @@ The `ExtensionAPI` interface provides these capabilities:
 pi.on(event: string, handler: ExtensionHandler): void
 ```
 
-Available events:
+#### Complete Event List
 
-| Event | Type | Can Modify? |
-|-------|------|-------------|
-| `resources_discover` | `ResourcesDiscoverEvent` | Yes → return `skillPaths`, `promptPaths`, `themePaths` |
-| `session_start` | `SessionStartEvent` | No |
-| `session_before_switch` | `SessionBeforeSwitchEvent` | Yes → return `{ cancel: true }` |
-| `session_switch` | `SessionSwitchEvent` | No |
-| `session_before_fork` | `SessionBeforeForkEvent` | Yes → return `{ cancel: true }` |
-| `session_fork` | `SessionForkEvent` | No |
-| `session_before_compact` | `SessionBeforeCompactEvent` | Yes → return `{ cancel: true }` or `{ compaction }` |
-| `session_compact` | `SessionCompactEvent` | No |
-| `session_shutdown` | `SessionShutdownEvent` | No |
-| `session_before_tree` | `SessionBeforeTreeEvent` | Yes → return `{ cancel: true }` or provide summary |
-| `session_tree` | `SessionTreeEvent` | No |
-| `context` | `ContextEvent` | Yes → return `{ messages }` to modify context |
-| `before_agent_start` | `BeforeAgentStartEvent` | Yes → return `{ message }` or `{ systemPrompt }` |
-| `agent_start` | `AgentStartEvent` | No |
-| `agent_end` | `AgentEndEvent` | No |
-| `turn_start` | `TurnStartEvent` | No |
-| `turn_end` | `TurnEndEvent` | No |
-| `model_select` | `ModelSelectEvent` | No |
-| `tool_call` | `ToolCallEvent` | Yes → return `{ block: true, reason }` to block |
-| `tool_result` | `ToolResultEvent` | Yes → return `{ content, details }` to modify |
-| `user_bash` | `UserBashEvent` | Yes → return `{ operations }` or `{ result }` |
-| `input` | `InputEvent` | Yes → return `{ action: "transform", text }` or `{ action: "handled" }` |
+| Event | Can Modify? | Purpose |
+|---|---|---|
+| `resources_discover` | Yes | Return additional paths |
+| `session_start` | No | Session initialization |
+| `session_before_switch` | Yes (cancel) | Before session switch |
+| `session_switch` | No | After session switch |
+| `session_before_fork` | Yes (cancel) | Before session fork |
+| `session_fork` | No | After session fork |
+| `session_before_compact` | Yes (cancel/custom) | Before compaction |
+| `session_compact` | No | After compaction |
+| `session_shutdown` | No | Session teardown |
+| `session_before_tree` | Yes (cancel/custom) | Before tree navigation |
+| `session_tree` | No | After tree navigation |
+| `context` | Yes (modify messages) | Context injection |
+| `before_agent_start` | Yes (inject message) | Before agent starts |
+| `agent_start` | No | Agent processing started |
+| `agent_end` | No | Agent processing ended |
+| `turn_start` | No | Turn started |
+| `turn_end` | No | Turn ended |
+| `message_start` | No | Message streaming started |
+| `message_update` | No | Message streaming update |
+| `message_end` | No | Message streaming ended |
+| `tool_execution_start` | No | Tool execution started |
+| `tool_execution_update` | No | Tool execution update |
+| `tool_execution_end` | No | Tool execution ended |
+| `model_select` | No | Model changed |
+| `tool_call` | Yes (block) | Intercept tool calls |
+| `tool_result` | Yes (modify) | Modify tool results |
+| `user_bash` | Yes (custom ops) | Intercept bash commands |
+| `input` | Yes (transform/handle) | Transform user input |
 
 ### Tool Registration
 
 ```typescript
-pi.registerTool<TParams, TDetails>(tool: ToolDefinition<TParams, TDetails>): void
+pi.registerTool<TParams, TDetails>(tool: ToolDefinition): void
 ```
 
 **ToolDefinition**:
@@ -132,17 +124,19 @@ interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = unknown> 
     onUpdate: AgentToolUpdateCallback<TDetails> | undefined,
     ctx: ExtensionContext,
   ): Promise<AgentToolResult<TDetails>>;
-  renderCall?: (args, theme) => Component;     // Custom call rendering
-  renderResult?: (result, options, theme) => Component; // Custom result rendering
+  renderCall?: (args, theme) => Component;
+  renderResult?: (result, options, theme) => Component;
 }
 ```
+
+**Important**: Use `StringEnum` from `@mariozechner/pi-ai` for string enums (not `Type.Union`/`Type.Literal`, which breaks Google API compatibility).
 
 ### Command Registration
 
 ```typescript
 pi.registerCommand(name: string, options: {
   description?: string;
-  getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null;
+  getArgumentCompletions?: (prefix: string) => AutocompleteItem[] | null;
   handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }): void
 ```
@@ -150,59 +144,55 @@ pi.registerCommand(name: string, options: {
 ### Message Sending
 
 ```typescript
-// Send a custom message (optionally triggers an agent turn)
-pi.sendMessage(message: Pick<CustomMessage, "customType" | "content" | "display" | "details">, options?: {
+// Send as user message (triggers full agent turn)
+pi.sendUserMessage(content: string | Content[], options?: {
+  deliverAs?: "steer" | "followUp";
+}): void
+
+// Send custom message
+pi.sendMessage(message: CustomMessage, options?: {
   triggerTurn?: boolean;
   deliverAs?: "steer" | "followUp" | "nextTurn";
 }): void
-
-// Send a user message (always triggers a turn)
-pi.sendUserMessage(content: string | (TextContent | ImageContent)[], options?: {
-  deliverAs?: "steer" | "followUp";
-}): void
 ```
 
-### Other Actions
+### Other API Methods
 
 ```typescript
-pi.appendEntry(customType: string, data?: unknown): void  // Persist state (not sent to LLM)
+pi.appendEntry(customType: string, data?: T): void  // Persist state
 pi.setSessionName(name: string): void
 pi.getSessionName(): string | undefined
-pi.setLabel(entryId: string, label: string | undefined): void
 pi.exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>
 pi.getActiveTools(): string[]
 pi.getAllTools(): ToolInfo[]
 pi.setActiveTools(toolNames: string[]): void
 pi.getCommands(): SlashCommandInfo[]
-pi.setModel(model: Model<any>): Promise<boolean>
+pi.setModel(model: Model): Promise<boolean>
 pi.getThinkingLevel(): ThinkingLevel
 pi.setThinkingLevel(level: ThinkingLevel): void
 pi.registerProvider(name: string, config: ProviderConfig): void
+pi.registerShortcut(shortcut: KeyId, options: ShortcutOptions): void
+pi.registerFlag(name: string, options: FlagOptions): void
 pi.getFlag(name: string): boolean | string | undefined
-```
-
-### Event Bus
-
-```typescript
-pi.events: EventBus  // Shared event bus for inter-extension communication
+pi.events: EventBus  // Inter-extension communication
 ```
 
 ---
 
 ## ExtensionContext
 
-Passed to event handlers and command handlers:
+### Base Context (all handlers)
 
 ```typescript
 interface ExtensionContext {
-  ui: ExtensionUIContext;           // UI methods
+  ui: ExtensionUIContext;
   hasUI: boolean;                    // false in print/RPC mode
-  cwd: string;                       // Current working directory
+  cwd: string;
   sessionManager: ReadonlySessionManager;
   modelRegistry: ModelRegistry;
-  model: Model<any> | undefined;
-  isIdle(): boolean;                 // Whether agent is not streaming
-  abort(): void;                     // Abort current agent operation
+  model: Model | undefined;
+  isIdle(): boolean;
+  abort(): void;
   hasPendingMessages(): boolean;
   shutdown(): void;
   getContextUsage(): ContextUsage | undefined;
@@ -211,7 +201,7 @@ interface ExtensionContext {
 }
 ```
 
-### ExtensionCommandContext (extends ExtensionContext)
+### Command Context (extends base)
 
 ```typescript
 interface ExtensionCommandContext extends ExtensionContext {
@@ -224,111 +214,78 @@ interface ExtensionCommandContext extends ExtensionContext {
 }
 ```
 
-### ExtensionUIContext
+### UI Context
 
 ```typescript
 interface ExtensionUIContext {
-  select(title: string, options: string[], opts?): Promise<string | undefined>;
-  confirm(title: string, message: string, opts?): Promise<boolean>;
-  input(title: string, placeholder?: string, opts?): Promise<string | undefined>;
   notify(message: string, type?: "info" | "warning" | "error"): void;
   setStatus(key: string, text: string | undefined): void;
-  setWorkingMessage(message?: string): void;
+  select(title: string, options: string[]): Promise<string | undefined>;
+  confirm(title: string, message: string): Promise<boolean>;
+  input(title: string, placeholder?: string): Promise<string | undefined>;
   setWidget(key: string, content: string[] | Component, options?): void;
   setFooter(factory?): void;
   setHeader(factory?): void;
   setTitle(title: string): void;
-  custom<T>(factory, options?): Promise<T>;
-  pasteToEditor(text: string): void;
-  setEditorText(text: string): void;
-  getEditorText(): string;
-  editor(title: string, prefill?: string): Promise<string | undefined>;
-  setEditorComponent(factory?): void;
   theme: Theme;
-  getAllThemes(): { name: string; path: string | undefined }[];
-  getTheme(name: string): Theme | undefined;
-  setTheme(theme: string | Theme): { success: boolean; error?: string };
-  getToolsExpanded(): boolean;
-  setToolsExpanded(expanded: boolean): void;
+  // ... more methods
 }
 ```
 
 ---
 
-## ExtensionRuntime
-
-Internal runtime object shared across extensions. Not exposed to extension authors directly, but its methods are delegated through `ExtensionAPI`:
-
-```typescript
-interface ExtensionRuntime {
-  sendMessage: (message, options?) => void;
-  sendUserMessage: (content, options?) => void;
-  appendEntry: (customType, data?) => void;
-  setSessionName: (name) => void;
-  getSessionName: () => string | undefined;
-  setLabel: (entryId, label?) => void;
-  getActiveTools: () => string[];
-  getAllTools: () => ToolInfo[];
-  setActiveTools: (toolNames) => void;
-  getCommands: () => SlashCommandInfo[];
-  setModel: (model) => Promise<boolean>;
-  getThinkingLevel: () => ThinkingLevel;
-  setThinkingLevel: (level) => void;
-  flagValues: Map<string, boolean | string>;
-  pendingProviderRegistrations: ProviderRegistration[];
-}
-```
-
----
-
-## Tool Wrapper (Interceptor Pattern)
-
-**File**: `wrapper.ts`
-
-Extensions can intercept tool calls and results via `tool_call` and `tool_result` events:
-
-- `tool_call` handler can block execution by returning `{ block: true, reason: "..." }`
-- `tool_result` handler can modify the result by returning `{ content, details }`
-
-The wrapper pattern:
-```typescript
-wrapToolsWithExtensions(tools, runner)
-// For each tool:
-//   1. Emit tool_call event → check for block
-//   2. Execute actual tool
-//   3. Emit tool_result event → allow modification
-```
-
----
-
-## Key Differences from Claude Code's Extension System
+## Key Differences from Claude Code's System
 
 | Aspect | Claude Code | Pi-Coding-Agent |
-|--------|------------|-----------------|
-| Extension type | Skills (prompt-based) + tools (native) | Factory function receiving `ExtensionAPI` |
-| Registration | `registerBundledSkill()` | `export default function(pi: ExtensionAPI)` |
+|---|---|---|
+| Extension type | Skills (prompt-based) + native tools | Factory function receiving ExtensionAPI |
+| Registration | `registerBundledSkill()` | `export default function(pi)` |
 | Tool definition | Zod schemas | TypeBox schemas |
-| Tool execution context | System prompt + model invocation | Direct `execute()` function |
+| Tool execution | Model invocation | Direct `execute()` function |
 | Event system | React hooks + message queue | `pi.on(event, handler)` |
 | Commands | Slash commands via skill | `pi.registerCommand(name, options)` |
-| Message sending | `enqueuePendingNotification()` | `pi.sendUserMessage()` / `pi.sendMessage()` |
-| State persistence | `.claude/scheduled_tasks.json` | `pi.appendEntry(customType, data)` |
-| UI | Terminal (Ink React) | Terminal (TUI components) |
-| Scheduling | Built-in CronCreate/CronDelete/CronList tools | **Not built-in** — this is what pi-loop adds |
+| Message sending | `enqueuePendingNotification()` | `pi.sendUserMessage()` |
+| State persistence | `.claude/scheduled_tasks.json` | `pi.appendEntry()` or custom files |
+| Scheduling | Built-in CronCreate/Delete/List | **Not built-in** — pi-loop adds this |
 
 ---
 
-## What a Loop Extension Needs
+## What pi-loop Uses
 
-To implement `/loop`-like functionality as a pi extension, we need:
+| pi-mono API | pi-loop Usage |
+|---|---|
+| `pi.registerTool(ToolDefinition)` | cron_create, cron_delete, cron_list |
+| `pi.registerCommand(name, options)` | /loop, /loop-list, /loop-kill |
+| `pi.on("session_start")` | Init scheduler, load durable tasks, acquire lock |
+| `pi.on("session_shutdown")` | Stop scheduler, release lock |
+| `pi.on("agent_start")` | Set scheduler busy |
+| `pi.on("agent_end")` | Set scheduler idle, drain pending fires |
+| `pi.sendUserMessage(content)` | Inject prompt when task fires |
+| `ctx.ui.notify(message, type)` | Fire notifications |
+| `ctx.ui.setStatus(key, text)` | Status bar loop count |
+| `ctx.hasUI` | Gate UI calls in print/RPC mode |
+| `ctx.cwd` | Project root for durable file paths |
 
-1. **A `/loop` command** → `pi.registerCommand("loop", {...})`
-2. **CronCreate/CronDelete/CronList tools** → `pi.registerTool(...)` for each
-3. **A scheduler daemon** → JavaScript `setInterval` running within the extension
-4. **State persistence** → `pi.appendEntry("loop-task", data)` for session state
-5. **Message injection on fire** → `pi.sendUserMessage(prompt)` when a task fires
-6. **UI notifications** → `ctx.ui.notify()`, `ctx.ui.setStatus()` for status
-7. **Lifecycle hooks** → `pi.on("session_start")` to restore tasks, `pi.on("session_shutdown")` for cleanup
-8. **Idle detection** → `ctx.isIdle()` to avoid interrupting in-progress turns
+### Not Used (Available for Future Features)
 
-The key architectural difference: Claude Code uses a dedicated scheduler with file locking and chokidar file watching for durable persistence. A pi extension runs inside the agent process and can use Node.js timers directly, but needs `pi.appendEntry()` for cross-session persistence since the extension dies when the process exits.
+| pi-mono API | Potential pi-loop Use |
+|---|---|
+| `pi.on("session_before_compact")` | Snapshot session tasks before compaction |
+| `pi.on("session_compact")` | Restore session tasks after compaction |
+| `pi.on("tool_call")` | Intercept cron tool calls for validation |
+| `pi.appendEntry()` | Session-aware state persistence |
+| `ctx.ui.setWidget()` | Rich status bar widget |
+| `pi.events` | Inter-extension coordination |
+
+---
+
+## Available Packages for Extensions
+
+| Package | Purpose |
+|---|---|
+| `@mariozechner/pi-coding-agent` | Full extension API, types, truncation utilities |
+| `@mariozechner/pi-ai` | StringEnum, model utilities |
+| `@mariozechner/pi-agent-core` | AgentToolResult type |
+| `@sinclair/typebox` | Schema definitions |
+| `@mariozechner/pi-tui` | Terminal UI components |
+| Node.js built-ins | fs, path, crypto, etc. |

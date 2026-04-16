@@ -1,4 +1,25 @@
-# pi-loop
+# pi-loop Documentation
+
+> @pi-agents/loop — recurring prompt scheduling for pi-coding-agent
+
+## Documents
+
+| Document | Description |
+|---|---|
+| [Design Spec](loop-extension-design.md) | Architecture, module structure, types, commands, tools, scheduler design |
+| [Known Limitations](KNOWN_LIMITATIONS.md) | Current gaps and planned improvements |
+| [Issues & Technical Debt](ISSUES.md) | Internal bug tracking with severity classifications |
+
+## Reference (import/)
+
+These documents capture external system analysis for comparison:
+
+| Document | Description |
+|---|---|
+| [Loop Architecture](../import/loop-architecture.md) | How Claude Code implements /loop end-to-end |
+| [Scheduler Internals](../import/scheduler-internals.md) | Cron engine, jitter, locking, missed tasks |
+| [Source Map](../import/source-map.md) | Claude Code file structure and data flow |
+| [Pi Extension API](../import/pi-extension-api.md) | pi-mono extension framework API surface |
 
 A recurring execution and scheduling framework for AI agents, inspired by the Claude Code `/loop` system.
 

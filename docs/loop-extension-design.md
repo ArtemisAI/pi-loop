@@ -1,6 +1,8 @@
 # Pi-Loop Extension Design Specification
 
-> Design for a `/loop` extension for the pi-coding-agent, inspired by Claude Code's `/loop` skill and CronCreate/CronDelete/CronList scheduling system.
+> Design for a `/loop` extension for the pi-coding-agent, ported from Claude Code's `/loop` skill and CronCreate/CronDelete/CronList scheduling system.
+>
+> **Last updated**: 2026-04-16 — revised after deep-dive comparison against Claude Code source, pi-mono framework, and claw-code reference implementation.
 
 ---
 
@@ -25,23 +27,40 @@ This maps Claude Code's `/loop` skill + CronCreate/CronDelete/CronList tool syst
 |                                                                     |
 |  +-------------+  +-----------------------------+  +-----------+   |
 |  |   Command   |  |   Tools (LLM-callable)      |  | Scheduler |   |
-|  |   /loop     |  |   CronCreate                |  | Engine     |   |
-|  |   /loop-list|  |   CronDelete                |  | (1s tick)  |   |
-|  |   /loop-kill|  |   CronList                  |  |            |   |
+|  |   /loop     |  |   cron_create               |  | Engine    |   |
+|  |   /loop-list|  |   cron_delete               |  | (1s tick) |   |
+|  |   /loop-kill|  |   cron_list                 |  |            |   |
 |  +-------------+  +-----------------------------+  +-----------+   |
 |        |                        |                        |         |
 |  +---------------------------------------------------------------+ |
 |  |               Extension API Integration                      |  |
 |  |                                                              |  |
 |  |  pi.sendUserMessage()  -> inject prompt when task fires     |  |
-|  |  pi.appendEntry()      -> persist loop state in session     |  |
-|  |  pi.on("agent_start") -> track idle/busy state             |  |
-|  |  pi.on("agent_end")   -> track idle/busy state             |  |
+|  |  pi.on("session_start") -> restore durable tasks, init lock |  |
+|  |  pi.on("session_shutdown") -> release lock, stop scheduler  |  |
+|  |  pi.on("agent_start")  -> track idle/busy state            |  |
+|  |  pi.on("agent_end")    -> track idle/busy state            |  |
 |  |  ctx.ui.notify()       -> fire notifications                |  |
 |  |  ctx.ui.setStatus()    -> persistent status bar indicator   |  |
 |  +---------------------------------------------------------------+ |
 +---------------------------------------------------------------------+
 ```
+
+### Framework Alignment
+
+pi-loop is built on the pi-mono extension API (`@mariozechner/pi-coding-agent`):
+
+| pi-mono API | pi-loop Usage |
+|---|---|
+| `pi.registerTool(ToolDefinition)` | cron_create, cron_delete, cron_list |
+| `pi.registerCommand(name, options)` | /loop, /loop-list, /loop-kill |
+| `pi.on("session_start", handler)` | Init scheduler, load durable tasks, acquire lock |
+| `pi.on("session_shutdown", handler)` | Stop scheduler, release lock |
+| `pi.on("agent_start" / "agent_end")` | Idle gating |
+| `pi.sendUserMessage(content)` | Inject prompt when task fires |
+| `ctx.ui.notify(message, type)` | User-visible notifications |
+| `ctx.ui.setStatus(key, text)` | Status bar loop count |
+| TypeBox (`@sinclair/typebox`) | Tool parameter schemas |
 
 ---
 
@@ -49,13 +68,16 @@ This maps Claude Code's `/loop` skill + CronCreate/CronDelete/CronList tool syst
 
 ```
 pi-loop/
-  index.ts            # Extension entry point (factory function)
-  cron.ts             # 5-field cron parser + next-run calculator
-  scheduler.ts        # Core scheduler: timer loop, fire dispatch
-  store.ts            # LoopTask CRUD: in-memory + durable file storage
-  jitter.ts           # Deterministic jitter calculations
-  types.ts            # LoopTask, config types
-  parse-args.ts       # /loop argument parsing (interval + prompt)
+  src/
+    index.ts            # Extension entry point (factory function)
+    cron.ts             # 5-field cron parser + next-run calculator
+    scheduler.ts        # Core scheduler: timer loop, fire dispatch
+    store.ts            # LoopTask CRUD: in-memory + durable file + lock
+    jitter.ts           # Deterministic jitter calculations
+    types.ts            # LoopTask, LoopConfig, DurableFile types
+    parse-args.ts       # /loop argument parsing (interval + prompt)
+    tools/
+      cron-tools.ts     # cron_create, cron_delete, cron_list registration
 ```
 
 ---
@@ -73,6 +95,7 @@ const LoopTaskSchema = Type.Object({
   prompt: Type.String(),       // Prompt to send when task fires
   createdAt: Type.Number(),    // Epoch ms (anchor for missed detection)
   lastFiredAt: Type.Optional(Type.Number()),  // Epoch ms of most recent fire
+  nextFireTime: Type.Optional(Type.Number()),  // Computed at creation for one-shots
   recurring: Type.Boolean(),   // true = reschedule; false = one-shot
   durable: Type.Boolean(),     // true = persist to .pi-loop.json
   label: Type.Optional(Type.String()),  // Optional human-readable label
@@ -134,7 +157,7 @@ Cancel a loop task by ID.
 
 These tools allow the agent itself to schedule loops programmatically (not just via user command).
 
-### CronCreate Tool
+### cron_create Tool
 
 ```typescript
 pi.registerTool({
@@ -153,7 +176,7 @@ pi.registerTool({
 });
 ```
 
-### CronDelete Tool
+### cron_delete Tool
 
 ```typescript
 pi.registerTool({
@@ -169,7 +192,7 @@ pi.registerTool({
 });
 ```
 
-### CronList Tool
+### cron_list Tool
 
 ```typescript
 pi.registerTool({
@@ -191,7 +214,7 @@ pi.registerTool({
 
 ```typescript
 class LoopScheduler {
-  private interval: NodeJS.Timeout | null = null;
+  private interval: ReturnType<typeof setInterval> | null = null;
   private isAgentBusy = false;
   private pendingFires: string[] = [];
 
@@ -206,8 +229,7 @@ class LoopScheduler {
   private check(): void {
     const now = Date.now();
     for (const task of getAllTasks()) {
-      const nextFire = computeNextFire(task, now);
-      if (nextFire !== null && now >= nextFire) {
+      if (this.shouldFire(task, now)) {
         if (this.isAgentBusy) {
           this.pendingFires.push(task.id);
         } else {
@@ -223,13 +245,12 @@ class LoopScheduler {
     // 3. If one-shot or aged-out: remove task
     // 4. If recurring: reschedule from now + jitter
     // 5. Notify UI
+    // 6. Persist durable tasks
   }
 }
 ```
 
 ### Idle Gate
-
-Unlike Claude Code which uses a React hook (`isLoading()`), pi-loop tracks idle state via events:
 
 ```typescript
 pi.on("agent_start", () => { scheduler.setBusy(); });
@@ -239,7 +260,7 @@ pi.on("agent_end", () => {
 });
 ```
 
-This mirrors Claude Code's "jobs only fire while the REPL is idle" constraint.
+This mirrors Claude Code's "jobs only fire while the REPL is idle" constraint. When the agent is busy (mid-turn), fires are queued in `pendingFires[]` and drained when the agent goes idle.
 
 ### Fire Dispatch
 
@@ -274,17 +295,9 @@ Using `pi.sendUserMessage()` ensures the prompt goes through the full agent pipe
 
 ## 8. State Storage
 
-### Session-Only (default)
+### Session-Only (default, `durable: false`)
 
 Tasks live in a JavaScript `Map<string, LoopTask>` in the extension's closure. They die when the agent process exits.
-
-```typescript
-const sessionTasks = new Map<string, LoopTask>();
-
-function addSessionTask(task: LoopTask): void {
-  sessionTasks.set(task.id, task);
-}
-```
 
 ### Durable (opt-in via `durable: true`)
 
@@ -306,22 +319,13 @@ Tasks persist to `.pi-loop.json` in the project root:
 }
 ```
 
-On `session_start`, durable tasks are loaded from disk. Missed one-shots are surfaced for confirmation.
-
-### Session Entry Persistence
-
-Using `pi.appendEntry()` for branch-aware state:
-
-```typescript
-pi.appendEntry("loop-created", { id, cron, prompt, recurring });
-// This survives session branching/forking/navigating
-```
+On `session_start`, durable tasks are loaded from disk. Missed one-shots are detected and surfaced (see Issue CR-001 in ISSUES.md).
 
 ---
 
 ## 9. Jitter System
 
-Directly ported from Claude Code's design:
+Ported from Claude Code's design. Prevents thundering-herd scenarios where many sessions hit the API at the same wall-clock time.
 
 ### Deterministic Per-Task Seed
 
@@ -339,17 +343,26 @@ nextFire = baseFire + jitterFrac(id) * jitterFrac * gapBetweenFires
 // capped at recurringJitterCapMs
 ```
 
-An hourly task with `jitterFrac = 0.1` spreads fires over [:00, :06).
-
 ### One-Shot: Backward Lead
 
 ```
-if (fireMinute % oneShotJitterMinuteMod !== 0) return fireTime  // no jitter
-lead = jitterFloor + jitterFrac(id) * (jitterMax - jitterFloor)
+if (fireMinute % oneShotJitterMinuteMod !== 0) return 0  // no jitter
+lead = oneShotFloor + jitterFrac(id) * (oneShotMax - oneShotFloor)
 return max(fireTime - lead, createdAt)  // never fire before creation
 ```
 
-A one-shot at 3:00 PM may fire at ~2:58:30 PM.
+### Jitter Defaults Comparison
+
+| Parameter | Claude Code | pi-loop | Notes |
+|---|---|---|---|
+| `recurringFrac` | **0.5** (50%) | 0.1 (10%) | Claude Code spreads fires more aggressively |
+| `recurringCapMs` | **1,800,000** (30 min) | 900,000 (15 min) | Claude Code allows wider spread window |
+| `oneShotMaxMs` | 90,000 (90 sec) | 90,000 (90 sec) | Aligned |
+| `oneShotFloorMs` | 0 | 0 | Aligned |
+| `oneShotMinuteMod` | 30 | 30 | Aligned |
+| `recurringMaxAgeMs` | 604,800,000 (7d) | 604,800,000 (7d) | Aligned |
+
+**Note**: Claude Code's jitter is more aggressive (50% vs 10%, 30min cap vs 15min cap). This is a known gap — see ISSUES.md MD-007.
 
 ---
 
@@ -366,49 +379,68 @@ This bounds memory usage and prevents unbounded session growth, matching Claude 
 For durable tasks, a file-based lock prevents multiple pi-coding-agent instances from double-firing:
 
 ```typescript
-// .pi-loop.lock (O_EXCL, same as Claude Code's scheduled_tasks.lock)
+// .pi-loop.json.lock (O_EXCL)
 const lockContent = JSON.stringify({
   pid: process.pid,
   acquiredAt: Date.now(),
 });
 ```
 
-Only the lock owner processes durable tasks. Non-owners re-probe every 5 seconds.
+### Known Issue (MD-006)
+
+The current implementation uses a 30-second stale timeout (`STALE_LOCK_MS = 30_000`), which is too short for session-lifetime locks. The fix is to use PID-based liveness checking via `process.kill(pid, 0)` instead of timestamp-based staleness. See ISSUES.md and GitHub issue #1 for details.
+
+### Claude Code's Approach
+
+Claude Code uses the same O_EXCL pattern but with PID liveness checking:
+- If the lock file exists and the owner PID is still alive -> wait
+- If the owner PID is dead (crashed session) -> recover stale lock
+- Non-owner sessions re-probe every 5 seconds
 
 ---
 
 ## 12. Claude Code Feature Mapping
 
-| Claude Code Feature | Pi-Loop Equivalent | Notes |
-|----------------------|-------------------|-------|
-| `/loop` skill | `pi.registerCommand("loop", ...)` | Same argument parsing |
-| `CronCreate` tool | `pi.registerTool("cron_create", ...)` | TypeBox instead of Zod |
-| `CronDelete` tool | `pi.registerTool("cron_delete", ...)` | |
-| `CronList` tool | `pi.registerTool("cron_list", ...)` | |
-| `cronScheduler.ts` | `scheduler.ts` class | Uses Node.js timers instead of React hooks |
-| `cronTasks.ts` CRUD | `store.ts` | In-memory Map + `.pi-loop.json` |
-| `cronTasksLock.ts` | In `store.ts` | O_EXCL lock file |
-| `cron.ts` parser | `cron.ts` | Direct port |
-| `cronJitterConfig.ts` | `jitter.ts` + config defaults | No GrowthBook; uses hardcoded defaults |
-| `useScheduledTasks.ts` hook | `pi.on()` events | `agent_start`/`agent_end` for idle tracking |
-| `enqueuePendingNotification()` | `pi.sendUserMessage()` | Same effect: injects prompt into agent |
-| `isKairosCronEnabled()` gate | Always enabled | No feature flag needed for extension |
-| `.claude/scheduled_tasks.json` | `.pi-loop.json` | Same format, different location |
-| `.claude/scheduled_tasks.lock` | `.pi-loop.lock` | Same O_EXCL mechanism |
-| `WORKLOAD_CRON` attribution | N/A | No billing tier concept in pi |
-| `isMeta: true` messages | N/A | No hidden message concept needed |
+| Claude Code Feature | Pi-Loop Equivalent | Status |
+|---|---|---|
+| `/loop` skill | `pi.registerCommand("loop", ...)` | Implemented - same argument parsing |
+| `CronCreate` tool | `pi.registerTool("cron_create", ...)` | Implemented - TypeBox schemas |
+| `CronDelete` tool | `pi.registerTool("cron_delete", ...)` | Implemented |
+| `CronList` tool | `pi.registerTool("cron_list", ...)` | Implemented |
+| 5-field cron parser | `src/cron.ts` | Implemented - direct port |
+| Scheduler 1s tick loop | `src/scheduler.ts` | Implemented |
+| Deterministic jitter | `src/jitter.ts` | Implemented - same algorithm |
+| Idle gating | `agent_start`/`agent_end` events | Implemented |
+| Pending fires + drain | `pendingFires[]` + `drainPendingFires()` | Implemented |
+| Auto-expiry (7d) | `isAgedOut()` | Implemented |
+| Durable persistence | `.pi-loop.json` | Implemented |
+| O_EXCL file lock | `.pi-loop.json.lock` | Implemented (bug in stale detection) |
+| `ScheduleWakeup` tool | -- | **Not implemented** |
+| Dynamic self-pacing | -- | **Not implemented** |
+| Missed one-shot detection | -- | **Not implemented** |
+| Session resume reconstruction | -- | **Not implemented** |
+| File watcher (chokidar) | -- | **Not implemented** |
+| `Monitor` tool integration | -- | **Not implemented** |
+| PID-based lock liveness | -- | **Not implemented** (uses timestamp) |
+| Max 50 jobs limit | `config.maxJobs` | Implemented |
+| Immediate first execution | `pi.sendUserMessage(parsed.prompt)` | Implemented |
 
 ---
 
 ## 13. Implementation Priority
 
 | Phase | Scope | Status |
-|-------|-------|--------|
-| 1 | Core: `/loop` command + cron parser + in-memory scheduler + `pi.sendUserMessage()` | Design complete |
-| 2 | Tools: `cron_create`, `cron_delete`, `cron_list` as LLM-callable tools | Design complete |
-| 3 | Durable: `.pi-loop.json` persistence + file lock + missed task recovery | Design complete |
-| 4 | Polish: jitter, auto-expiry, status bar widget, fire notifications | Design complete |
-| 5 | Advanced: multi-session lock recovery, config file, npm package | Future |
+|---|---|---|
+| 1 | Core: `/loop` command + cron parser + in-memory scheduler + `pi.sendUserMessage()` | Done |
+| 2 | Tools: `cron_create`, `cron_delete`, `cron_list` as LLM-callable tools | Done |
+| 3 | Durable: `.pi-loop.json` persistence + file lock | Done (lock has bug) |
+| 4 | Polish: jitter, auto-expiry, status bar widget, fire notifications | Done |
+| 5 | Fix lock: PID-based liveness check replacing 30s stale timeout | Pending (Issue #1) |
+| 6 | Missed one-shot detection on startup | Planned (CR-001) |
+| 7 | Session resume reconstruction after compaction | Planned |
+| 8 | File watcher for durable task hot-reload | Planned |
+| 9 | ScheduleWakeup / dynamic self-pacing mode | Planned |
+| 10 | Bump jitter defaults to match Claude Code | Planned (MD-007) |
 
 ---
 
@@ -416,10 +448,40 @@ Only the lock owner processes durable tasks. Non-owners re-probe every 5 seconds
 
 1. **Use `pi.sendUserMessage()` not `pi.sendMessage()`**: Loops should trigger full agent turns (tool calls, streaming), not just custom messages. `sendUserMessage` is the right injection point.
 
-2. **No ScheduleWakeup equivalent**: Claude Code has a separate "dynamic mode" where the model self-paces. In pi-loop, all scheduling goes through cron. The model can use `cron_create` to set its own next fire time.
+2. **ScheduleWakeup deferred**: Claude Code has a separate "dynamic mode" where the model self-paces with `ScheduleWakeup`. In pi-loop, all scheduling currently goes through cron. The model can use `cron_create` to set its own next fire time. Dynamic pacing is planned for Phase 9.
 
-3. **No GrowthBook dependency**: Jitter config is hardcoded with sensible defaults. Future: allow `.pi-loop.config.json` for project-specific overrides.
+3. **No GrowthBook dependency**: Jitter config is hardcoded with sensible defaults. Claude Code uses GrowthBook for fleet-wide runtime tuning, which isn't applicable to the pi ecosystem. Future: allow `.pi-loop.config.json` for project-specific overrides.
 
-4. **TypeBox over Zod**: Pi-coding-agent uses TypeBox for tool parameter schemas, so pi-loop follows the same convention.
+4. **TypeBox over Zod**: Pi-coding-agent uses TypeBox (`@sinclair/typebox`) for tool parameter schemas, so pi-loop follows the same convention. Claude Code uses Zod.
 
 5. **`.pi-loop.json` instead of `.claude/scheduled_tasks.json`**: Uses the pi naming convention and project root location instead of Claude Code's `.claude/` directory.
+
+6. **snake_case tool names**: Claude Code uses PascalCase (`CronCreate`, `CronDelete`, `CronList`). pi-loop uses snake_case (`cron_create`, `cron_delete`, `cron_list`) following pi-mono ecosystem conventions.
+
+7. **`@mariozechner/pi-agent-core` import**: Tool results use `AgentToolResult` from `pi-agent-core`. Extensions should verify this dependency is available at runtime.
+
+---
+
+## 15. Reference Implementations
+
+### Claude Code (TypeScript, closed source)
+- Original implementation that pi-loop ports
+- Tools: `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`
+- Skills: `/loop` with 3-rule argument parsing
+- Scheduler: 1s tick, chokidar file watcher, O_EXCL lock with PID liveness
+- Jitter: Deterministic per-task, configurable via GrowthBook
+- Storage: `.claude/scheduled_tasks.json` (durable), in-memory (session)
+
+### claw-code (Rust, open source)
+- Clean room re-implementation at `github.com/ultraworkers/claw-code`
+- Has `CronCreate`/`CronDelete`/`CronList` as in-memory registry only
+- **No real scheduler** — cron tools are data stores, no tick loop, no automatic execution
+- No `/loop`, no `ScheduleWakeup`, no `Monitor`
+- Unique features: worker boot state machine, lane events, recovery recipes
+
+### pi-mono Framework (TypeScript, open source)
+- The extension API pi-loop builds on
+- Package: `@mariozechner/pi-coding-agent`
+- **No built-in scheduling primitives** — extensions must implement their own
+- Rich event system: `session_start`, `agent_start/end`, `tool_call/result`, etc.
+- Tools defined via TypeBox schemas + `execute()` handlers
