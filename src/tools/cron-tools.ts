@@ -76,6 +76,7 @@ export function registerCronTools(
         cron: params.cron,
         prompt: params.prompt,
         createdAt: Date.now(),
+        nextFireTime: params.recurring ? undefined : nextCronRunMs(params.cron, Date.now()) ?? undefined,
         recurring: params.recurring,
         durable: params.durable,
       };

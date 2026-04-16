@@ -199,9 +199,33 @@ export default function piLoop(pi: ExtensionAPI): void {
     // Load durable tasks
     hasLock = await acquireLock(cwd, config);
     if (hasLock) {
-      const durableTasks = await loadDurableTasks(cwd, config);
-      for (const task of durableTasks) {
+      const result = await loadDurableTasks(cwd, config);
+      
+      // Add active tasks
+      for (const task of result.tasks) {
         addTask(task);
+      }
+      
+      // Handle missed one-shots: fire them immediately
+      // This recovers one-shot tasks that were scheduled while the agent was offline
+      if (result.missedOneshots.length > 0) {
+        const now = Date.now();
+        for (const missed of result.missedOneshots) {
+          const scheduledTime = missed.nextFireTime 
+            ? new Date(missed.nextFireTime).toLocaleString() 
+            : 'unknown';
+          console.warn(`[pi-loop] Missed one-shot ${missed.id} scheduled for ${scheduledTime}, firing now`);
+          
+          if (ctx.hasUI) {
+            ctx.ui.notify(
+              `Missed one-shot task recovered:\n${missed.prompt.slice(0, 100)}\nScheduled: ${scheduledTime}`,
+              "warning"
+            );
+          }
+          
+          // Fire immediately if agent is idle (will be idle after session_start)
+          pi.sendUserMessage(missed.prompt);
+        }
       }
     }
 

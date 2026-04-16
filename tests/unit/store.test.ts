@@ -111,10 +111,11 @@ describe("Durable persistence", () => {
     const filePath = join(tmpDir, DEFAULT_CONFIG.durableFilePath);
     expect(existsSync(filePath)).toBe(true);
 
-    const loaded = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
-    expect(loaded).toHaveLength(1);
-    expect(loaded[0].id).toBe(task.id);
-    expect(loaded[0].prompt).toBe(task.prompt);
+    const result = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].id).toBe(task.id);
+    expect(result.tasks[0].prompt).toBe(task.prompt);
+    expect(result.missedOneshots).toHaveLength(0);
   });
 
   it("only persists durable tasks", async () => {
@@ -123,14 +124,52 @@ describe("Durable persistence", () => {
 
     await writeDurableTasks(tmpDir, DEFAULT_CONFIG);
 
-    const loaded = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
-    expect(loaded).toHaveLength(1);
-    expect(loaded[0].durable).toBe(true);
+    const result = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].durable).toBe(true);
   });
 
-  it("returns empty array when file does not exist", async () => {
-    const loaded = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
-    expect(loaded).toEqual([]);
+  it("returns empty result when file does not exist", async () => {
+    const result = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
+    expect(result.tasks).toEqual([]);
+    expect(result.missedOneshots).toEqual([]);
+  });
+
+  it("detects missed one-shots on load", async () => {
+    // Create a one-shot task that already passed
+    const pastTime = Date.now() - 60000; // 1 minute ago
+    const task = makeTask({ 
+      durable: true, 
+      recurring: false,
+      nextFireTime: pastTime 
+    });
+    addTask(task);
+
+    await writeDurableTasks(tmpDir, DEFAULT_CONFIG);
+    clearAllTasks();
+
+    const result = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
+    expect(result.tasks).toHaveLength(0); // Missed task not added to active
+    expect(result.missedOneshots).toHaveLength(1);
+    expect(result.missedOneshots[0].id).toBe(task.id);
+  });
+
+  it("does not detect missed recurring tasks", async () => {
+    // Recurring tasks should never be detected as missed
+    const pastTime = Date.now() - 60000;
+    const task = makeTask({ 
+      durable: true, 
+      recurring: true,
+      nextFireTime: pastTime 
+    });
+    addTask(task);
+
+    await writeDurableTasks(tmpDir, DEFAULT_CONFIG);
+    clearAllTasks();
+
+    const result = await loadDurableTasks(tmpDir, DEFAULT_CONFIG);
+    expect(result.tasks).toHaveLength(1); // Recurring task loaded normally
+    expect(result.missedOneshots).toHaveLength(0);
   });
 });
 

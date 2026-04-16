@@ -3,10 +3,24 @@
  * Includes file-based O_EXCL locking for multi-instance safety.
  */
 
-import { readFile, writeFile, open, unlink, stat } from "node:fs/promises";
+import { readFile, writeFile, open, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { LoopConfig, LoopTask, DurableFile } from "./types.js";
+import { nextCronRunMs } from "./cron.js";
+
+// --- Debug logging ---
+
+const DEBUG = process.env.PI_LOOP_DEBUG === '1' || process.env.PI_LOOP_DEBUG === 'true';
+
+function debug(...args: any[]): void {
+  if (!DEBUG) return;
+  console.debug('[pi-loop]', ...args);
+}
+
+function logError(...args: any[]): void {
+  console.error('[pi-loop]', ...args);
+}
 
 // --- In-memory store ---
 
@@ -16,8 +30,15 @@ export function generateTaskId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
-export function addTask(task: LoopTask): void {
+export function addTask(task: LoopTask): boolean {
+  if (tasks.has(task.id)) {
+    // Guard against duplicate ID (MD-005)
+    debug('addTask: task ID already exists:', task.id);
+    return false;
+  }
   tasks.set(task.id, task);
+  debug('addTask: added task', task.id, 'recurring:', task.recurring, 'durable:', task.durable);
+  return true;
 }
 
 export function removeTask(id: string): boolean {
@@ -54,17 +75,61 @@ function lockPath(cwd: string, config: LoopConfig): string {
   return durablePath(cwd, config) + ".lock";
 }
 
+// --- Load result with missed task detection ---
+
+export interface LoadResult {
+  tasks: LoopTask[];         // All loaded tasks
+  missedOneshots: LoopTask[];  // One-shots that missed their fire time
+}
+
 export async function loadDurableTasks(
   cwd: string,
   config: LoopConfig,
-): Promise<LoopTask[]> {
+): Promise<LoadResult> {
+  const result: LoadResult = { tasks: [], missedOneshots: [] };
+  
   try {
     const raw = await readFile(durablePath(cwd, config), "utf-8");
     const data: DurableFile = JSON.parse(raw);
-    if (!Array.isArray(data.tasks)) return [];
-    return data.tasks;
-  } catch {
-    return [];
+    
+    if (!Array.isArray(data.tasks)) {
+      logError('loadDurableTasks: tasks is not an array in', durablePath(cwd, config));
+      return result;
+    }
+    
+    const now = Date.now();
+    
+    for (const task of data.tasks) {
+      // Detect missed one-shots
+      if (!task.recurring && task.nextFireTime && now > task.nextFireTime) {
+        debug('loadDurableTasks: missed one-shot detected', task.id, 
+              'scheduled for', new Date(task.nextFireTime).toISOString());
+        result.missedOneshots.push(task);
+        // Don't add to active tasks - it missed its window
+      } else {
+        result.tasks.push(task);
+      }
+    }
+    
+    debug('loadDurableTasks: loaded', result.tasks.length, 'tasks,', 
+          result.missedOneshots.length, 'missed one-shots');
+    
+    return result;
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      // File doesn't exist - expected for new projects
+      debug('loadDurableTasks: no durable file (new project)');
+      return result;
+    }
+    if (err instanceof SyntaxError) {
+      // JSON parse error - file corruption
+      logError('loadDurableTasks: failed to parse durable tasks file:', err.message);
+      // Consider backing up corrupted file
+      return result;
+    }
+    // Unexpected error
+    logError('loadDurableTasks: failed to load durable tasks:', err);
+    return result;
   }
 }
 
@@ -72,9 +137,15 @@ export async function writeDurableTasks(
   cwd: string,
   config: LoopConfig,
 ): Promise<void> {
-  const durableTasks = getAllTasks().filter((t) => t.durable);
-  const data: DurableFile = { tasks: durableTasks };
-  await writeFile(durablePath(cwd, config), JSON.stringify(data, null, 2) + "\n", "utf-8");
+  try {
+    const durableTasks = getAllTasks().filter((t) => t.durable);
+    const data: DurableFile = { tasks: durableTasks };
+    await writeFile(durablePath(cwd, config), JSON.stringify(data, null, 2) + "\n", "utf-8");
+    debug('writeDurableTasks: persisted', durableTasks.length, 'tasks');
+  } catch (err) {
+    logError('writeDurableTasks: failed to persist durable tasks:', err);
+    throw err;  // Re-throw - caller should handle
+  }
 }
 
 // --- File lock for multi-instance safety ---
