@@ -21,6 +21,7 @@
     "LICENSE"
   ],
   "pi": {
+    "image": "https://raw.githubusercontent.com/ArtemisAI/pi-loop/main/assets/logo.png",
     "extensions": [
       "./dist/index.js"
     ],
