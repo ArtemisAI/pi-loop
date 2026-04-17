@@ -166,9 +166,8 @@ async function testCronToHuman() {
   assert(cronToHuman("0 */2 * * *") === "every 2 hours", "0 */2 → every 2 hours");
   assert(cronToHuman("0 */1 * * *") === "every hour", "0 */1 → every hour");
   assert(cronToHuman("30 14 * * *") === "daily at 2:30 PM", "30 14 → daily at 2:30 PM");
-  // BUG: "0 0 * * *" returns "daily at 12:00 AM" instead of "every day at midnight"
-  // The every-day pattern only matches when dom is */N, not plain *
-  assert(cronToHuman("0 0 * * *") === "daily at 12:00 AM", "0 0 * * * → daily at 12:00 AM (cosmetic: should be 'every day at midnight')");
+  // Fixed: "0 0 * * *" now returns "every day at midnight" (LW-004)
+  assert(cronToHuman("0 0 * * *") === "every day at midnight", "0 0 * * * → every day at midnight");
   assert(cronToHuman("0 0 */1 * *") === "every day at midnight", "0 0 */1 → every day at midnight");
   assert(cronToHuman("0 8 * * *") === "daily at 8:00 AM", "0 8 → daily at 8:00 AM");
   assert(cronToHuman("15,45 * * * *") === "15,45 * * * *", "complex pattern falls back");

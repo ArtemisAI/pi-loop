@@ -149,11 +149,14 @@ export function cronToHuman(cron: string): string {
     return n === 1 ? "every hour" : `every ${n} hours`;
   }
 
-  // Every N days
-  const everyDayMatch = dom.match(/^\*\/(\d+)$/);
-  if (min === "0" && hour === "0" && everyDayMatch && mon === "*" && dow === "*") {
-    const n = parseInt(everyDayMatch[1], 10);
-    return n === 1 ? "every day at midnight" : `every ${n} days at midnight`;
+  // Every N days (or bare * which is equivalent to */1)
+  if (min === "0" && hour === "0" && mon === "*" && dow === "*") {
+    if (dom === "*") return "every day at midnight";
+    const everyDayMatch = dom.match(/^\*\/(\d+)$/);
+    if (everyDayMatch) {
+      const n = parseInt(everyDayMatch[1], 10);
+      return n === 1 ? "every day at midnight" : `every ${n} days at midnight`;
+    }
   }
 
   // Specific time

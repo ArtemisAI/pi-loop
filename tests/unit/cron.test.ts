@@ -139,7 +139,7 @@ describe("cronToHuman", () => {
 
   it("daily at specific time", () => {
     expect(cronToHuman("30 14 * * *")).toBe("daily at 2:30 PM");
-    expect(cronToHuman("0 0 * * *")).toBe("daily at 12:00 AM");
+    expect(cronToHuman("0 0 * * *")).toBe("every day at midnight");
     expect(cronToHuman("0 12 * * *")).toBe("daily at 12:00 PM");
   });
 
