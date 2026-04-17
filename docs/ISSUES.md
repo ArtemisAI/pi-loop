@@ -396,6 +396,7 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 | LW-001 | Low | Jitter doc comment mismatch | **Fixed** | -- | 2026-04-16 |
 | LW-002 | Low | No debug logging | **Fixed** | -- | 2026-04-16 |
 | LW-003 | Low | cron_create missing label param | **Fixed** | -- | 2026-04-16 |
+| LW-004 | Low | cronToHuman midnight fallback | Open | [#12](https://github.com/ArtemisAI/pi-loop-DEV/issues/12) | 2026-04-17 |
 
 ---
 
@@ -403,6 +404,7 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 
 | Date | Change |
 |------|--------|
+| 2026-04-17 | Added LW-004: cronToHuman('0 0 * * *') returns 'daily at 12:00 AM' not 'every day at midnight'. Found by E2E test suite. |
 | 2026-04-16 | Implementation sprint: fixed CR-001, HI-001, MD-003, MD-004, MD-005, MD-007, LW-001, LW-003. 86 tests passing. |
 | 2026-04-16 | Major revision: regraded issues by severity, added HI-001/HI-002, added MD-007 through MD-010, LW-003; added feature parity table; added Claude Code and claw-code references |
 | 2026-04-16 | Initial issue audit completed |
