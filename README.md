@@ -19,10 +19,10 @@ Recurring prompt scheduling and cron job management for [pi-coding-agent](https:
 ## Install
 
 ```bash
-npm install @pi-agents/loop
+pi install npm:@pi-agents/loop@latest
 ```
 
-Add to your pi-agent settings (`~/.pi/agent/settings.json`):
+Or add to your pi-agent settings (`~/.pi/agent/settings.json`):
 
 ```json
 {
