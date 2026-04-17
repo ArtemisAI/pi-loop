@@ -3,7 +3,7 @@
 > Internal development document — tracks bugs, design gaps, and future work.
 > For public-facing summary, see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 >
-> **Last updated**: 2026-04-16 — all fixable issues resolved for v0.2.0.
+> **Last updated**: 2026-04-17 — v0.3.1 evaluation complete. All issues verified except MD-010.
 
 ---
 
@@ -358,15 +358,15 @@ Comparison against Claude Code's scheduling system:
 | Pending fires + drain | Yes | Yes | -- |
 | Auto-expiry (7d) | Yes | Yes | -- |
 | Durable persistence | Yes | Yes | -- |
-| O_EXCL file lock | Yes | Yes (bug) | -- |
-| PID-based lock liveness | Yes | No | High (HI-001) |
-| Missed one-shot detection | Yes | No | Critical (CR-001) |
-| Session resume reconstruction | Yes | No | High (HI-002) |
-| ScheduleWakeup tool | Yes | No | Medium (MD-009) |
-| Dynamic self-pacing | Yes | No | Medium (MD-009) |
-| File watcher for durable tasks | Yes | No | Medium (MD-008) |
+| O_EXCL file lock | Yes | Yes | -- |
+| PID-based lock liveness | Yes | **Yes** | -- (HI-001 fixed) |
+| Missed one-shot detection | Yes | **Yes** | -- (CR-001 fixed) |
+| Session resume reconstruction | Yes | **Yes** | -- (HI-002 fixed) |
+| ScheduleWakeup tool | Yes | **Yes** | -- (MD-009 fixed) |
+| Dynamic self-pacing | Yes | **Yes** | -- (MD-009 fixed) |
+| File watcher for durable tasks | Yes | **Yes** | -- (MD-008 fixed) |
 | Monitor integration | Yes | No | Low (MD-010) |
-| Jitter defaults (50%/30min) | Yes | No (10%/15min) | Medium (MD-007) |
+| Jitter defaults (50%/30min) | Yes | **Yes** | -- (MD-007 fixed) |
 | Max 50 jobs | Yes | Yes | -- |
 | Immediate first execution | Yes | Yes | -- |
 | Prompt cache awareness | Yes | No | Low (part of MD-009) |
@@ -396,7 +396,7 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 | LW-001 | Low | Jitter doc comment mismatch | **Fixed** | -- | 2026-04-16 |
 | LW-002 | Low | No debug logging | **Fixed** | -- | 2026-04-16 |
 | LW-003 | Low | cron_create missing label param | **Fixed** | -- | 2026-04-16 |
-| LW-004 | Low | cronToHuman midnight fallback | Open | [#12](https://github.com/ArtemisAI/pi-loop-DEV/issues/12) | 2026-04-17 |
+| LW-004 | Low | cronToHuman midnight fallback | **Fixed** | [#12](https://github.com/ArtemisAI/pi-loop-DEV/issues/12) | 2026-04-17 |
 
 ---
 
@@ -404,6 +404,7 @@ For context, claw-code's cron is a purely in-memory data registry with no schedu
 
 | Date | Change |
 |------|--------|
+| 2026-04-17 | **v0.3.1 evaluation complete**: 187 unit/integration tests + 53/54 E2E all pass. Added `docs/EVAL-v0.3.1.md`. LW-004 confirmed fixed. Feature parity table updated. All issues verified except MD-010. |
 | 2026-04-17 | Added LW-004: cronToHuman('0 0 * * *') returns 'daily at 12:00 AM' not 'every day at midnight'. Found by E2E test suite. |
 | 2026-04-16 | Implementation sprint: fixed CR-001, HI-001, MD-003, MD-004, MD-005, MD-007, LW-001, LW-003. 86 tests passing. |
 | 2026-04-16 | Major revision: regraded issues by severity, added HI-001/HI-002, added MD-007 through MD-010, LW-003; added feature parity table; added Claude Code and claw-code references |
