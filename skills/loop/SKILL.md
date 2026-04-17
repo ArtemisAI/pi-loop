@@ -31,7 +31,19 @@ Examples:
 
 - `/loop [interval] <prompt>` — Quick recurring loop (e.g. `/loop 5m check the deploy`)
 - `/loop-list` — List all active loops
-- `/loop-kill <id>` — Cancel a loop by ID
+- `/loop-kill <id|label|all>` — Cancel loop(s) by ID, fuzzy label match, or kill all
+
+### Cancelling loops
+
+```
+/loop-kill all              → Cancel every active loop
+/loop-kill abc123           → Cancel by exact ID
+/loop-kill deploy           → Cancel by fuzzy match on label/prompt (1 match)
+/loop-kill test             → Shows all matches when multiple loops match (pick by ID)
+/loop-kill                  → Shows usage help
+```
+
+Fuzzy matching searches label, prompt text, and human-readable schedule (case-insensitive). When exactly one loop matches, it's cancelled immediately. With multiple matches, they're listed for the user to pick.
 
 ## Cron format
 

@@ -13,6 +13,7 @@ import {
   getTaskCount,
   generateTaskId,
   writeDurableTasks,
+  clearAllTasks,
 } from "../store.js";
 import type { LoopConfig, LoopTask } from "../types.js";
 import type { LoopScheduler } from "../scheduler.js";
@@ -118,16 +119,28 @@ export function registerCronTools(
   pi.registerTool({
     name: "cron_delete",
     label: "Cancel Scheduled Task",
-    description: "Cancel a scheduled cron task by ID. Use cron_list to see active tasks.",
+    description: "Cancel a scheduled cron task by ID. Pass 'all' to cancel every active task. Use cron_list to see active tasks.",
     parameters: Type.Object({
-      id: Type.String({ description: "Task ID to cancel" }),
+      id: Type.String({ description: "Task ID to cancel, or 'all' to cancel every task" }),
     }),
-    promptSnippet: "cron_delete — cancel a scheduled task by ID",
+    promptSnippet: "cron_delete — cancel a scheduled task by ID, or all",
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx): Promise<Result> {
+      if (params.id === "all") {
+        const tasks = getAllTasks();
+        if (tasks.length === 0) {
+          return result("No active tasks to cancel.");
+        }
+        const count = tasks.length;
+        clearAllTasks();
+        await writeDurableTasks(getCwd(), config).catch(() => {});
+        scheduler.refreshStatus();
+        return result(`Cancelled ${count} task${count === 1 ? "" : "s"}.`);
+      }
+
       const removed = removeTask(params.id);
       if (!removed) {
-        return result(`No task found with ID "${params.id}".`);
+        return result(`No task found with ID "${params.id}". Use cron_list to see active tasks.`);
       }
 
       await writeDurableTasks(getCwd(), config).catch(() => {});

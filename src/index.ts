@@ -17,6 +17,7 @@ import { LoopScheduler } from "./scheduler.js";
 import {
   addTask,
   removeTask,
+  getTask,
   getAllTasks,
   getTaskCount,
   generateTaskId,
@@ -165,12 +166,11 @@ export default function piLoop(pi: ExtensionAPI): void {
       const tasks = getAllTasks();
       if (tasks.length === 0) {
         if (ctx.hasUI) {
-          ctx.ui.notify("No active loops.", "info");
+          ctx.ui.notify("No active loops. Use /loop <interval> <prompt> to start one.", "info");
         }
         return;
       }
 
-      const now = Date.now();
       const lines = tasks.map((t) => {
         const human = cronToHuman(t.cron);
         const next = nextCronRunMs(t.cron, t.lastFiredAt ?? t.createdAt);
@@ -192,41 +192,100 @@ export default function piLoop(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("loop-kill", {
-    description: "Cancel a loop task by ID",
+    description: "Cancel loop(s): /loop-kill <id|label|all>. Use /loop-list to see active loops.",
 
     getArgumentCompletions(prefix: string) {
-      return getAllTasks()
-        .filter((t) => t.id.startsWith(prefix))
-        .map((t) => {
-          const label = `${t.id} — ${cronToHuman(t.cron)}: ${t.prompt.slice(0, 30)}`;
-          return { value: t.id, label };
-        });
+      const tasks = getAllTasks();
+      const completions: { value: string; label: string }[] = [];
+      if ("all".startsWith(prefix)) {
+        completions.push({ value: "all", label: "all — cancel every active loop" });
+      }
+      for (const t of tasks) {
+        if (t.id.startsWith(prefix)) {
+          completions.push({
+            value: t.id,
+            label: `${t.id} — ${cronToHuman(t.cron)}: ${t.prompt.slice(0, 30)}`,
+          });
+        }
+      }
+      return completions;
     },
 
     async handler(args, ctx) {
-      const id = args.trim();
-      if (!id) {
+      const input = args.trim();
+      if (!input) {
         if (ctx.hasUI) {
-          ctx.ui.notify("Usage: /loop-kill <task-id>", "warning");
+          ctx.ui.notify(
+            "Usage: /loop-kill <id|label|all>\n\nExamples:\n  /loop-kill all        — cancel all loops\n  /loop-kill abc123     — cancel by ID\n  /loop-kill deploy     — cancel by label/prompt match\n\nUse /loop-list to see active loops.",
+            "warning",
+          );
         }
         return;
       }
 
-      const removed = removeTask(id);
-      if (!removed) {
-        if (ctx.hasUI) {
-          ctx.ui.notify(`No loop found with ID "${id}".`, "error");
+      const notify = (msg: string, level: "info" | "warning" | "error") => {
+        if (ctx.hasUI) ctx.ui.notify(msg, level);
+      };
+
+      // --- Kill all ---
+      if (input === "all") {
+        const tasks = getAllTasks();
+        if (tasks.length === 0) {
+          notify("No active loops to cancel.", "info");
+          return;
         }
+        const count = tasks.length;
+        clearAllTasks();
+        writeDurableTasks(cwd, config).catch(() => {});
+        scheduler?.refreshStatus();
+        notify(`Cancelled ${count} loop${count === 1 ? "" : "s"}.`, "info");
         return;
       }
 
-      // Persist if we had durable tasks
-      writeDurableTasks(cwd, config).catch(() => {});
-      scheduler?.refreshStatus();
-
-      if (ctx.hasUI) {
-        ctx.ui.notify(`Loop ${id} cancelled.`, "info");
+      // --- Exact ID ---
+      const exact = getTask(input);
+      if (exact) {
+        removeTask(input);
+        writeDurableTasks(cwd, config).catch(() => {});
+        scheduler?.refreshStatus();
+        const label = exact.label ? ` (${exact.label})` : "";
+        notify(`Cancelled [${input}]${label} — ${cronToHuman(exact.cron)}: ${exact.prompt.slice(0, 40)}`, "info");
+        return;
       }
+
+      // --- Fuzzy match on label, prompt, cron ---
+      const query = input.toLowerCase();
+      const matches = getAllTasks().filter((t) => {
+        const label = (t.label ?? "").toLowerCase();
+        const prompt = t.prompt.toLowerCase();
+        const human = cronToHuman(t.cron).toLowerCase();
+        return label.includes(query) || prompt.includes(query) || human.includes(query);
+      });
+
+      if (matches.length === 0) {
+        notify(`No loops matching "${input}". Use /loop-list to see active loops.`, "error");
+        return;
+      }
+
+      if (matches.length === 1) {
+        const t = matches[0];
+        removeTask(t.id);
+        writeDurableTasks(cwd, config).catch(() => {});
+        scheduler?.refreshStatus();
+        const label = t.label ? ` (${t.label})` : "";
+        notify(`Cancelled [${t.id}]${label} — ${cronToHuman(t.cron)}: ${t.prompt.slice(0, 40)}`, "info");
+        return;
+      }
+
+      // Multiple matches — list them and let user pick
+      const lines = matches.map((t) => {
+        const label = t.label ? ` (${t.label})` : "";
+        return `  [${t.id}]${label} ${cronToHuman(t.cron)} — ${t.prompt.slice(0, 40)}`;
+      });
+      notify(
+        `${matches.length} loops match "${input}":\n${lines.join("\n")}\n\nUse /loop-kill <id> to cancel a specific one, or /loop-kill all to cancel everything.`,
+        "warning",
+      );
     },
   });
 
