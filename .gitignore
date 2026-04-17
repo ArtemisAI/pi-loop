@@ -2,4 +2,4 @@ node_modules/
 dist/
 .pi-loop.json
 .pi-loop.json.lock
-.pi-lens/
+.pi-lens/assets/social-preview.*
