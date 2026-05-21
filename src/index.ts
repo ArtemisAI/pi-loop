@@ -11,6 +11,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { watchFile, unwatchFile } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { intervalToCron, cronToHuman, nextCronRunMs } from "./cron.js";
 import { parseLoopArgs } from "./parse-args.js";
 import { LoopScheduler } from "./scheduler.js";
@@ -309,60 +310,62 @@ export default function piLoop(pi: ExtensionAPI): void {
     registerCronTools(pi, scheduler, config, () => cwd);
     registerWakeupTool(pi, config);
 
-    // Load durable tasks
-    hasLock = await acquireLock(cwd, config);
-    if (hasLock) {
-      const result = await loadDurableTasks(cwd, config);
-      
-      // Add active tasks
-      for (const task of result.tasks) {
-        addTask(task);
-      }
-      
-      // Handle missed one-shots: fire them immediately
-      // This recovers one-shot tasks that were scheduled while the agent was offline
-      if (result.missedOneshots.length > 0) {
-        const now = Date.now();
-        for (const missed of result.missedOneshots) {
-          const scheduledTime = missed.nextFireTime 
-            ? new Date(missed.nextFireTime).toLocaleString() 
-            : 'unknown';
-          console.warn(`[pi-loop] Missed one-shot ${missed.id} scheduled for ${scheduledTime}, firing now`);
-          
-          if (ctx.hasUI) {
-            ctx.ui.notify(
-              `Missed one-shot task recovered:\n${missed.prompt.slice(0, 100)}\nScheduled: ${scheduledTime}`,
-              "warning"
-            );
-          }
-          
-          // Fire immediately if agent is idle (will be idle after session_start)
-          pi.sendUserMessage(missed.prompt);
+    // Load durable tasks from both local (CWD) and global (~) paths
+    const localLock = await acquireLock(cwd, config, false);
+    const globalLock = await acquireLock(cwd, config, true);
+    hasLock = localLock || globalLock;
+
+    const result = await loadDurableTasks(cwd, config);
+
+    // Add active tasks
+    for (const task of result.tasks) {
+      addTask(task);
+    }
+
+    // Handle missed one-shots: fire them immediately
+    if (result.missedOneshots.length > 0) {
+      for (const missed of result.missedOneshots) {
+        const scheduledTime = missed.nextFireTime
+          ? new Date(missed.nextFireTime).toLocaleString()
+          : 'unknown';
+        console.warn(`[pi-loop] Missed one-shot ${missed.id} scheduled for ${scheduledTime}, firing now`);
+
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            `Missed one-shot task recovered:\n${missed.prompt.slice(0, 100)}\nScheduled: ${scheduledTime}`,
+            "warning"
+          );
         }
+
+        pi.sendUserMessage(missed.prompt);
       }
     }
 
-    // Watch durable file for external changes (MD-008)
-    const durablePath = join(cwd, config.durableFilePath);
-    watchFile(durablePath, { interval: 5000 }, () => {
-      if (!hasLock) return;
-      debug("fileWatcher: durable file changed, reloading");
-      loadDurableTasks(cwd, config).then((result) => {
-        const fileIds = new Set(result.tasks.map((t) => t.id));
-        for (const existing of getAllTasks()) {
-          if (existing.durable && !fileIds.has(existing.id)) {
-            removeTask(existing.id);
+    // Watch both durable files for external changes
+    const localDurablePath = join(cwd, config.durableFilePath);
+    const globalDurablePath = join(homedir(), config.durableFilePath);
+
+    for (const dp of [localDurablePath, globalDurablePath]) {
+      watchFile(dp, { interval: 5000 }, () => {
+        if (!hasLock) return;
+        debug("fileWatcher: durable file changed, reloading");
+        loadDurableTasks(cwd, config).then((result) => {
+          const fileIds = new Set(result.tasks.map((t) => t.id));
+          for (const existing of getAllTasks()) {
+            if (existing.durable && !fileIds.has(existing.id)) {
+              removeTask(existing.id);
+            }
           }
-        }
-        const currentIds = new Set(getAllTasks().map((t) => t.id));
-        for (const task of result.tasks) {
-          if (!currentIds.has(task.id)) {
-            addTask(task);
+          const currentIds = new Set(getAllTasks().map((t) => t.id));
+          for (const task of result.tasks) {
+            if (!currentIds.has(task.id)) {
+              addTask(task);
+            }
           }
-        }
-        scheduler?.refreshStatus();
-      }).catch(() => {});
-    });
+          scheduler?.refreshStatus();
+        }).catch(() => {});
+      });
+    }
 
     // Start the scheduler tick loop
     scheduler.start();
@@ -378,11 +381,14 @@ export default function piLoop(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     scheduler?.stop();
-    const dp = join(cwd, config.durableFilePath);
-    unwatchFile(dp);
-    if (hasLock) {
-      await releaseLock(cwd, config);
-    }
+
+    const localDp = join(cwd, config.durableFilePath);
+    const globalDp = join(homedir(), config.durableFilePath);
+    unwatchFile(localDp);
+    unwatchFile(globalDp);
+
+    await releaseLock(cwd, config, false);
+    await releaseLock(cwd, config, true);
   });
 
   // --- Session compaction: preserve session-only tasks (HI-002) ---

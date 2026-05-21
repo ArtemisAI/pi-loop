@@ -5,6 +5,7 @@
 
 import { readFile, writeFile, open, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { LoopConfig, LoopTask, DurableFile } from "./types.js";
 import { nextCronRunMs } from "./cron.js";
@@ -67,12 +68,13 @@ export function clearAllTasks(): void {
 
 // --- Durable file persistence ---
 
-function durablePath(cwd: string, config: LoopConfig): string {
-  return join(cwd, config.durableFilePath);
+function durablePath(cwd: string, config: LoopConfig, isGlobal: boolean = false): string {
+  const base = isGlobal ? homedir() : cwd;
+  return join(base, config.durableFilePath);
 }
 
-function lockPath(cwd: string, config: LoopConfig): string {
-  return durablePath(cwd, config) + ".lock";
+function lockPath(cwd: string, config: LoopConfig, isGlobal: boolean = false): string {
+  return durablePath(cwd, config, isGlobal) + ".lock";
 }
 
 // --- Load result with missed task detection ---
@@ -87,61 +89,80 @@ export async function loadDurableTasks(
   config: LoopConfig,
 ): Promise<LoadResult> {
   const result: LoadResult = { tasks: [], missedOneshots: [] };
-  
-  try {
-    const raw = await readFile(durablePath(cwd, config), "utf-8");
-    const data: DurableFile = JSON.parse(raw);
-    
-    if (!Array.isArray(data.tasks)) {
-      logError('loadDurableTasks: tasks is not an array in', durablePath(cwd, config));
-      return result;
-    }
-    
-    const now = Date.now();
-    
-    for (const task of data.tasks) {
-      // Detect missed one-shots
-      if (!task.recurring && task.nextFireTime && now > task.nextFireTime) {
-        debug('loadDurableTasks: missed one-shot detected', task.id, 
-              'scheduled for', new Date(task.nextFireTime).toISOString());
-        result.missedOneshots.push(task);
-        // Don't add to active tasks - it missed its window
-      } else {
-        result.tasks.push(task);
+  const now = Date.now();
+
+  // Load from both local (CWD) and global (~) paths
+  // Skip global if it resolves to the same file as local (e.g. when cwd == homedir)
+  const localPath = durablePath(cwd, config, false);
+  const globalPath = durablePath(cwd, config, true);
+  const loadingPaths = localPath === globalPath ? [false] : [false, true];
+
+  for (const isGlobal of loadingPaths) {
+    const path = durablePath(cwd, config, isGlobal);
+    try {
+      const raw = await readFile(path, "utf-8");
+      const data: DurableFile = JSON.parse(raw);
+
+      if (!Array.isArray(data.tasks)) {
+        logError('loadDurableTasks: tasks is not an array in', path);
+        continue;
       }
+
+      for (const task of data.tasks) {
+        task.global = isGlobal;  // Mark origin
+        if (!task.recurring && task.nextFireTime && now > task.nextFireTime) {
+          debug('loadDurableTasks: missed one-shot detected', task.id,
+            'scheduled for', new Date(task.nextFireTime).toISOString());
+          result.missedOneshots.push(task);
+        } else {
+          result.tasks.push(task);
+        }
+      }
+
+      debug('loadDurableTasks: loaded', data.tasks.length, 'tasks from', isGlobal ? 'global' : 'local', 'path');
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        debug('loadDurableTasks: no durable file at', path);
+        continue;
+      }
+      if (err instanceof SyntaxError) {
+        logError('loadDurableTasks: failed to parse durable tasks file:', path, err.message);
+        continue;
+      }
+      logError('loadDurableTasks: failed to load', path, err);
     }
-    
-    debug('loadDurableTasks: loaded', result.tasks.length, 'tasks,', 
-          result.missedOneshots.length, 'missed one-shots');
-    
-    return result;
-  } catch (err: any) {
-    if (err.code === 'ENOENT') {
-      // File doesn't exist - expected for new projects
-      debug('loadDurableTasks: no durable file (new project)');
-      return result;
-    }
-    if (err instanceof SyntaxError) {
-      // JSON parse error - file corruption
-      logError('loadDurableTasks: failed to parse durable tasks file:', err.message);
-      // Consider backing up corrupted file
-      return result;
-    }
-    // Unexpected error
-    logError('loadDurableTasks: failed to load durable tasks:', err);
-    return result;
   }
+
+  debug('loadDurableTasks: total', result.tasks.length, 'tasks,',
+    result.missedOneshots.length, 'missed one-shots');
+
+  return result;
 }
 
 export async function writeDurableTasks(
   cwd: string,
   config: LoopConfig,
 ): Promise<void> {
+  const durableTasks = getAllTasks().filter((t) => t.durable);
+  const localTasks = durableTasks.filter(t => !t.global);
+  const globalTasks = durableTasks.filter(t => t.global);
+
   try {
-    const durableTasks = getAllTasks().filter((t) => t.durable);
-    const data: DurableFile = { tasks: durableTasks };
-    await writeFile(durablePath(cwd, config), JSON.stringify(data, null, 2) + "\n", "utf-8");
-    debug('writeDurableTasks: persisted', durableTasks.length, 'tasks');
+    // Write local tasks to CWD-based file
+    if (localTasks.length > 0) {
+      await writeFile(durablePath(cwd, config, false), JSON.stringify({ tasks: localTasks }, null, 2) + "\n", "utf-8");
+    } else {
+      try { await unlink(durablePath(cwd, config, false)); } catch { /* ignore */ }
+    }
+
+    // Write global tasks to ~/.pi-loop.json
+    if (globalTasks.length > 0) {
+      await writeFile(durablePath(cwd, config, true), JSON.stringify({ tasks: globalTasks }, null, 2) + "\n", "utf-8");
+    } else {
+      try { await unlink(durablePath(cwd, config, true)); } catch { /* ignore */ }
+    }
+
+    debug('writeDurableTasks: persisted', localTasks.length, 'local tasks,', globalTasks.length, 'global tasks');
   } catch (err) {
     logError('writeDurableTasks: failed to persist durable tasks:', err);
     throw err;  // Re-throw - caller should handle
@@ -167,8 +188,9 @@ export function isPidAlive(pid: number): boolean {
 export async function acquireLock(
   cwd: string,
   config: LoopConfig,
+  isGlobal: boolean = false,
 ): Promise<boolean> {
-  const path = lockPath(cwd, config);
+  const path = lockPath(cwd, config, isGlobal);
   const content: LockContent = {
     pid: process.pid,
     acquiredAt: Date.now(),
@@ -202,9 +224,10 @@ export async function acquireLock(
 export async function releaseLock(
   cwd: string,
   config: LoopConfig,
+  isGlobal: boolean = false,
 ): Promise<void> {
   try {
-    const path = lockPath(cwd, config);
+    const path = lockPath(cwd, config, isGlobal);
     const raw = await readFile(path, "utf-8");
     const lock: LockContent = JSON.parse(raw);
     // Only release if we own it
