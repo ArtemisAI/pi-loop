@@ -11,6 +11,7 @@ export const LoopTaskSchema = Type.Object({
   nextFireTime: Type.Optional(Type.Number()),  // Computed at creation for one-shots; enables missed-fire detection
   recurring: Type.Boolean(),
   durable: Type.Boolean(),
+  global: Type.Optional(Type.Boolean()),
   label: Type.Optional(Type.String()),
 });
 

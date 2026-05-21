@@ -53,6 +53,10 @@ export function registerCronTools(
         default: false,
         description: "true = persist to .pi-loop.json across sessions; false = session-only",
       }),
+      global: Type.Optional(Type.Boolean({
+        default: false,
+        description: "true = persist to ~/.pi-loop.json globally (project-independent); false = persist to local .pi-loop.json",
+      })),
       label: Type.Optional(Type.String({
         description: "Optional human-readable label for this task",
       })),
@@ -83,6 +87,7 @@ export function registerCronTools(
         nextFireTime: params.recurring ? undefined : nextCronRunMs(params.cron, Date.now()) ?? undefined,
         recurring: params.recurring,
         durable: params.durable,
+        global: params.global ?? false,
         label: params.label,
       };
 
@@ -109,6 +114,7 @@ export function registerCronTools(
         `  Prompt: ${task.prompt}`,
         `  Recurring: ${params.recurring}`,
         `  Durable: ${params.durable}`,
+        `  Global: ${task.global}`,
         expiryNote,
         `Cancel with: cron_delete { id: "${task.id}" } or /loop-kill ${task.id}`,
       ].join("\n"));
