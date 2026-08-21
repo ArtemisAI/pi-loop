@@ -39,6 +39,7 @@ Or add to your pi-agent settings (`~/.pi/agent/settings.json`):
 | `/loop [interval] <prompt>` | Start a recurring loop (default: dynamic pacing) |
 | `/loop-list` | List all active loops |
 | `/loop-kill <id>` | Cancel a loop by ID |
+| `/loops` | Interactive dashboard — view, edit, and cancel loops (TUI) |
 
 **Fixed interval:**
 ```
@@ -51,6 +52,24 @@ Or add to your pi-agent settings (`~/.pi/agent/settings.json`):
 /loop monitor the build
 ```
 The agent executes the prompt immediately, then uses `schedule_wakeup` to self-pace subsequent iterations.
+
+### Loops Dashboard
+
+`/loops` opens an interactive TUI dashboard over every active loop (session and durable):
+
+- **View** each loop's id, human frequency, and next fire time, with `recurring`/`one-shot` and `durable`/`session` flags.
+- **Edit** the selected loop's prompt (`e`) or frequency (`f`) inline — accepts an interval shorthand (`5m`) or a raw 5-field cron. Changes apply immediately against the live scheduler.
+- **Cancel** the selected loop (`d`) or every loop (`x`), each with a confirm step.
+
+| Key | Action |
+|---|---|
+| `↑↓` / `j` `k` | Move cursor |
+| `e` | Edit prompt |
+| `f` | Edit frequency |
+| `d` | Cancel selected loop |
+| `x` | Cancel all loops |
+| `r` | Refresh |
+| `esc` / `q` | Close |
 
 ### LLM Tools
 
