@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`/loops` interactive dashboard** — a TUI overlay to view every active loop (session + durable) with its human-readable frequency and live next-fire countdown, and to manage loops in place: inline-edit a loop's **prompt** (`e`) or **frequency** (`f`, accepts `5m`-style intervals or raw cron), **cancel** one (`d`) or all (`x`), with `↑↓`/`jk` navigation. All mutations operate on the same in-memory store the scheduler reads, so changes take effect immediately without re-issuing `/loop`. Registered unbound (no default keybinding); complements the existing text-only `/loop-list`.
+
+---
+
 ## [0.3.1] — 2026-04-17
 
 ### Added

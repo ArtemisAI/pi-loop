@@ -28,6 +28,7 @@ import {
   clearAllTasks,
 } from "./store.js";
 import { registerCronTools } from "./tools/cron-tools.js";
+import { LoopsDashboard, type LoopsUiDeps } from "./loops-ui.js";
 import { registerWakeupTool } from "./schedule-wakeup.js";
 import { DEFAULT_CONFIG, type LoopConfig, type LoopTask } from "./types.js";
 
@@ -285,6 +286,34 @@ export default function piLoop(pi: ExtensionAPI): void {
       notify(
         `${matches.length} loops match "${input}":\n${lines.join("\n")}\n\nUse /loop-kill <id> to cancel a specific one, or /loop-kill all to cancel everything.`,
         "warning",
+      );
+    },
+  });
+
+  pi.registerCommand("loops", {
+    description:
+      "Open the interactive loops dashboard — view active loops, their frequency and next fire time; edit a loop's prompt or frequency; cancel loops.",
+
+    async handler(_args, ctx) {
+      if (!ctx.hasUI) return;
+      const deps: LoopsUiDeps = {
+        getConfig: () => config,
+        getCwd: () => cwd,
+        refreshStatus: () => scheduler?.refreshStatus(),
+        schedulerRunning: () => scheduler !== null,
+      };
+      await ctx.ui.custom<void>(
+        (tui, theme, _keybindings, done) => new LoopsDashboard(tui, theme, done, deps),
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "center",
+            width: 88,
+            minWidth: 60,
+            maxHeight: "85%",
+            margin: 1,
+          },
+        },
       );
     },
   });
