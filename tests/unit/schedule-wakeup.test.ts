@@ -74,7 +74,7 @@ describe("ScheduleWakeup", () => {
       (scheduler as any).fire(task);
 
       expect(getTask(task.id)).toBeUndefined();
-      expect(pi.sendUserMessage).toHaveBeenCalledWith("<<autonomous-loop-dynamic>>");
+      expect(pi.sendUserMessage).toHaveBeenCalledWith("<<autonomous-loop-dynamic>>", { deliverAs: "followUp" });
     });
   });
 

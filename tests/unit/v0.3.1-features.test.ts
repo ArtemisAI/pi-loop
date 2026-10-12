@@ -550,7 +550,7 @@ describe("v0.3.1: ScheduleWakeup / Dynamic Pacing (MD-009)", () => {
       (scheduler as any).fire(task);
 
       expect(getTask(task.id)).toBeUndefined();
-      expect(pi.sendUserMessage).toHaveBeenCalledWith(task.prompt);
+      expect(pi.sendUserMessage).toHaveBeenCalledWith(task.prompt, { deliverAs: "followUp" });
     });
   });
 
@@ -989,7 +989,7 @@ describe("v0.3.1: Scheduler Auto-Expiry", () => {
     (scheduler as any).fire(task);
 
     expect(getTask(task.id)).toBeUndefined();
-    expect(pi.sendUserMessage).toHaveBeenCalledWith(task.prompt);
+    expect(pi.sendUserMessage).toHaveBeenCalledWith(task.prompt, { deliverAs: "followUp" });
   });
 });
 

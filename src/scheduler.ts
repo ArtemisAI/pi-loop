@@ -117,7 +117,7 @@ export class LoopScheduler {
     }
 
     // Inject prompt as user message
-    this.pi.sendUserMessage(task.prompt);
+    this.pi.sendUserMessage(task.prompt, { deliverAs: "followUp" });
 
     // Update fire time
     task.lastFiredAt = Date.now();

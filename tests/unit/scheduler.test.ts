@@ -144,7 +144,12 @@ describe("LoopScheduler", () => {
   });
 
   describe("fire", () => {
-    it("injects prompt via sendUserMessage", () => {
+    it("queues prompt via sendUserMessage when the agent is busy", () => {
+      pi.sendUserMessage.mockImplementation((_prompt: string, options: any) => {
+        if (!options?.deliverAs) {
+          throw new Error("Agent is already processing");
+        }
+      });
       const task = makeTask({
         cron: "*/5 * * * *",
         createdAt: Date.now() - 6 * 60_000,
@@ -153,9 +158,9 @@ describe("LoopScheduler", () => {
 
       const scheduler = new LoopScheduler(pi, DEFAULT_CONFIG, "/tmp");
       scheduler.setContext(ctx);
-      (scheduler as any).fire(task);
+      expect(() => (scheduler as any).fire(task)).not.toThrow();
 
-      expect(pi.sendUserMessage).toHaveBeenCalledWith("test prompt");
+      expect(pi.sendUserMessage).toHaveBeenCalledWith("test prompt", { deliverAs: "followUp" });
     });
 
     it("removes one-shot task after firing", () => {
@@ -219,7 +224,7 @@ describe("LoopScheduler", () => {
       scheduler.setIdle();
 
       // Now it should have fired
-      expect(pi.sendUserMessage).toHaveBeenCalledWith("test prompt");
+      expect(pi.sendUserMessage).toHaveBeenCalledWith("test prompt", { deliverAs: "followUp" });
 
       scheduler.stop();
     });
@@ -282,7 +287,7 @@ describe("LoopScheduler", () => {
       expect(getTask(task.id)).toBeUndefined();
 
       // But it should have fired once
-      expect(pi.sendUserMessage).toHaveBeenCalledWith("test prompt");
+      expect(pi.sendUserMessage).toHaveBeenCalledWith("test prompt", { deliverAs: "followUp" });
     });
   });
 

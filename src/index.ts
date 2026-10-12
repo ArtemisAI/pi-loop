@@ -103,6 +103,7 @@ export default function piLoop(pi: ExtensionAPI): void {
           "call schedule_wakeup to arm the next wake-up. Choose your delay based on " +
           "the task: 60-270s for active work, 1200-1800s for idle monitoring. " +
           "Omit the call to end the loop.]",
+          { deliverAs: "followUp" },
         );
         return;
       }
@@ -155,7 +156,7 @@ export default function piLoop(pi: ExtensionAPI): void {
       }
 
       // Immediately execute the prompt (don't wait for first cron fire)
-      pi.sendUserMessage(parsed.prompt);
+      pi.sendUserMessage(parsed.prompt, { deliverAs: "followUp" });
     },
   });
 
@@ -337,7 +338,7 @@ export default function piLoop(pi: ExtensionAPI): void {
           }
           
           // Fire immediately if agent is idle (will be idle after session_start)
-          pi.sendUserMessage(missed.prompt);
+          pi.sendUserMessage(missed.prompt, { deliverAs: "followUp" });
         }
       }
     }
